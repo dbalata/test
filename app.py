@@ -6,7 +6,8 @@ from langchain.schema import HumanMessage, AIMessage
 
 from src.document_processor import DocumentProcessor
 from src.qa_system import QASystem
-from src.agents import create_research_agent
+from src.agents import create_research_agent, create_code_generation_agent, MultiAgentSystem
+from src.code_generator import CodeGenerator
 from src.utils import setup_logging
 
 # Load environment variables
@@ -27,6 +28,183 @@ def initialize_session_state():
         st.session_state.chat_history = []
     if 'documents_loaded' not in st.session_state:
         st.session_state.documents_loaded = False
+    if 'code_generator' not in st.session_state:
+        st.session_state.code_generator = CodeGenerator()
+    if 'multi_agent_system' not in st.session_state:
+        st.session_state.multi_agent_system = None
+
+def render_code_generation_section():
+    """Render the code generation section in the sidebar."""
+    st.subheader("🧩 Code Generation")
+    
+    # Code generation mode selection
+    gen_mode = st.selectbox(
+        "Generation Mode",
+        ["AI Description", "Template", "API Client", "Explain Code"],
+        help="Choose how you want to generate code"
+    )
+    
+    if gen_mode == "AI Description":
+        description = st.text_area(
+            "Describe what you want to build:",
+            placeholder="Create a REST API endpoint that handles user authentication with JWT tokens"
+        )
+        language = st.selectbox("Language", ["python", "javascript", "sql", "other"])
+        framework = st.text_input("Framework (optional)", placeholder="flask, react, fastapi")
+        
+        if st.button("🚀 Generate Code"):
+            if description:
+                with st.spinner("Generating code..."):
+                    try:
+                        result = st.session_state.code_generator.generate_with_ai(
+                            description, language, framework or None
+                        )
+                        if result['success']:
+                            st.success("Code generated successfully!")
+                            
+                            # Display explanation
+                            if result['result']['explanation']:
+                                st.write("**Explanation:**")
+                                st.write(result['result']['explanation'])
+                            
+                            # Display code blocks
+                            for i, block in enumerate(result['result']['code_blocks']):
+                                st.write(f"**Code ({block['language']}):**")
+                                st.code(block['code'], language=block['language'])
+                            
+                            # Display dependencies
+                            if result['result']['dependencies']:
+                                st.write("**Dependencies:**")
+                                for dep in result['result']['dependencies']:
+                                    st.write(f"- {dep}")
+                        else:
+                            st.error(f"Error: {result['error']}")
+                    except Exception as e:
+                        st.error(f"Generation failed: {str(e)}")
+            else:
+                st.warning("Please provide a description")
+    
+    elif gen_mode == "Template":
+        # Show available templates
+        templates = st.session_state.code_generator.get_available_templates()
+        template_name = st.selectbox("Select Template", list(templates.keys()))
+        
+        if template_name:
+            st.write(f"**Description:** {templates[template_name]}")
+            
+            # Template-specific parameters
+            if template_name == "python_class":
+                class_name = st.text_input("Class Name", "MyClass")
+                description = st.text_input("Description", "A sample class")
+                
+                if st.button("Generate from Template"):
+                    try:
+                        result = st.session_state.code_generator.generate_from_template(
+                            template_name,
+                            class_name=class_name,
+                            description=description,
+                            init_params="",
+                            init_body="pass",
+                            methods="def sample_method(self):\n        pass"
+                        )
+                        if result['success']:
+                            st.code(result['code'], language='python')
+                        else:
+                            st.error(result['error'])
+                    except Exception as e:
+                        st.error(f"Template generation failed: {str(e)}")
+            
+            elif template_name == "flask_api":
+                endpoint = st.text_input("Endpoint", "users")
+                method = st.selectbox("Method", ["GET", "POST", "PUT", "DELETE"])
+                function_name = st.text_input("Function Name", "handle_users")
+                
+                if st.button("Generate from Template"):
+                    try:
+                        result = st.session_state.code_generator.generate_from_template(
+                            template_name,
+                            endpoint=endpoint,
+                            method=method,
+                            function_name=function_name,
+                            description=f"Handle {method} requests for {endpoint}",
+                            function_body="    # Add your logic here\n    pass",
+                            return_value="{'status': 'success'}"
+                        )
+                        if result['success']:
+                            st.code(result['code'], language='python')
+                        else:
+                            st.error(result['error'])
+                    except Exception as e:
+                        st.error(f"Template generation failed: {str(e)}")
+    
+    elif gen_mode == "API Client":
+        api_description = st.text_input("API Description", "User Management API")
+        base_url = st.text_input("Base URL", "https://api.example.com")
+        endpoints_text = st.text_area(
+            "Endpoints (one per line)",
+            "GET /users - Get all users\nPOST /users - Create user\nGET /users/{id} - Get user by ID"
+        )
+        
+        if st.button("Generate API Client"):
+            if api_description and base_url and endpoints_text:
+                with st.spinner("Generating API client..."):
+                    try:
+                        # Parse endpoints
+                        endpoints = []
+                        for line in endpoints_text.split('\n'):
+                            if line.strip() and ' ' in line:
+                                parts = line.split(' ', 2)
+                                if len(parts) >= 2:
+                                    endpoints.append({
+                                        'method': parts[0],
+                                        'path': parts[1],
+                                        'description': parts[2] if len(parts) > 2 else ''
+                                    })
+                        
+                        result = st.session_state.code_generator.generate_api_client(
+                            api_description, base_url, endpoints
+                        )
+                        
+                        if result['success']:
+                            st.success("API client generated!")
+                            
+                            # Display explanation
+                            st.write("**Explanation:**")
+                            st.write(result['client_code']['explanation'])
+                            
+                            # Display code
+                            for block in result['client_code']['code_blocks']:
+                                st.code(block['code'], language=block['language'])
+                        else:
+                            st.error(f"Error: {result['error']}")
+                    except Exception as e:
+                        st.error(f"API client generation failed: {str(e)}")
+            else:
+                st.warning("Please fill in all fields")
+    
+    elif gen_mode == "Explain Code":
+        code_input = st.text_area(
+            "Paste your code here:",
+            placeholder="def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
+        )
+        detail_level = st.selectbox("Detail Level", ["brief", "detailed", "expert"])
+        
+        if st.button("Explain Code"):
+            if code_input:
+                with st.spinner("Analyzing code..."):
+                    try:
+                        result = st.session_state.code_generator.explain_code(
+                            code_input, detail_level
+                        )
+                        if result['success']:
+                            st.write("**Code Explanation:**")
+                            st.write(result['explanation'])
+                        else:
+                            st.error(f"Error: {result['error']}")
+                    except Exception as e:
+                        st.error(f"Code explanation failed: {str(e)}")
+            else:
+                st.warning("Please provide code to explain")
 
 def main():
     st.set_page_config(
@@ -88,6 +266,11 @@ def main():
                             memory=st.session_state.memory
                         )
                         
+                        # Initialize multi-agent system
+                        st.session_state.multi_agent_system = MultiAgentSystem(
+                            qa_system=st.session_state.qa_system
+                        )
+                        
                         st.session_state.documents_loaded = True
                         st.success("✅ Documents processed successfully!")
                         
@@ -102,12 +285,24 @@ def main():
             st.session_state.chat_history = []
             st.session_state.memory.clear()
             st.rerun()
+        
+        st.markdown("---")
+        
+        # Code Generation Section
+        render_code_generation_section()
     
     # Main content area
     col1, col2 = st.columns([2, 1])
     
     with col1:
         st.subheader("💬 Chat Interface")
+        
+        # Agent selection
+        agent_type = st.selectbox(
+            "Select Agent Type",
+            ["auto", "research", "code_generation"],
+            help="Choose which agent to use, or let the system decide automatically"
+        )
         
         # Display chat history
         chat_container = st.container()
@@ -119,21 +314,35 @@ def main():
                     st.chat_message("assistant").write(message.content)
         
         # Chat input
-        if prompt := st.chat_input("Ask a question about your documents..."):
-            if not st.session_state.documents_loaded:
-                st.warning("Please upload and process documents first!")
-            else:
-                # Add user message to chat history
-                user_message = HumanMessage(content=prompt)
-                st.session_state.chat_history.append(user_message)
-                
-                # Display user message
-                st.chat_message("user").write(prompt)
-                
-                # Get AI response
-                with st.chat_message("assistant"):
-                    with st.spinner("Thinking..."):
-                        try:
+        if prompt := st.chat_input("Ask a question about your documents or request code generation..."):
+            # Add user message to chat history
+            user_message = HumanMessage(content=prompt)
+            st.session_state.chat_history.append(user_message)
+            
+            # Display user message
+            st.chat_message("user").write(prompt)
+            
+            # Get AI response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        # Use multi-agent system if available and documents are loaded
+                        if st.session_state.multi_agent_system and agent_type != "auto":
+                            # Use specific agent
+                            response = st.session_state.multi_agent_system.process_query(
+                                prompt, agent_type if agent_type != "auto" else None
+                            )
+                            
+                            if "error" in response:
+                                st.error(response["error"])
+                                answer = f"Error: {response['error']}"
+                            else:
+                                st.write(f"*Agent used: {response['agent_used']}*")
+                                st.write(response["result"])
+                                answer = response["result"]
+                        
+                        elif st.session_state.documents_loaded and st.session_state.qa_system:
+                            # Use regular QA system
                             response = st.session_state.qa_system.ask_question(prompt)
                             st.write(response["answer"])
                             
@@ -145,28 +354,35 @@ def main():
                                         st.write(source)
                                         st.write("---")
                             
-                            # Add AI message to chat history
-                            ai_message = AIMessage(content=response["answer"])
-                            st.session_state.chat_history.append(ai_message)
-                            
-                        except Exception as e:
-                            error_msg = f"Error generating response: {str(e)}"
-                            st.error(error_msg)
-                            logger.error(error_msg)
+                            answer = response["answer"]
+                        
+                        else:
+                            # No documents loaded, use code generation agent if it's a code-related query
+                            if any(keyword in prompt.lower() for keyword in ['generate', 'create', 'code', 'build', 'write']):
+                                try:
+                                    code_agent = create_code_generation_agent()
+                                    result = code_agent.run(prompt)
+                                    st.write("*Using code generation agent*")
+                                    st.write(result)
+                                    answer = result
+                                except Exception as e:
+                                    st.error(f"Code generation error: {str(e)}")
+                                    answer = f"Error: {str(e)}"
+                            else:
+                                st.warning("Please upload and process documents first, or ask a code generation question!")
+                                answer = "Please upload documents first or ask about code generation."
+                        
+                        # Add AI message to chat history
+                        ai_message = AIMessage(content=answer)
+                        st.session_state.chat_history.append(ai_message)
+                        
+                    except Exception as e:
+                        error_msg = f"Error generating response: {str(e)}"
+                        st.error(error_msg)
+                        logger.error(error_msg)
     
     with col2:
-        st.subheader("🔍 Research Agent")
-        
-        if st.button("🌐 Enable Research Agent"):
-            if not st.session_state.documents_loaded:
-                st.warning("Please process documents first!")
-            else:
-                try:
-                    research_agent = create_research_agent()
-                    st.success("✅ Research agent enabled!")
-                    st.info("You can now ask questions that require web research in addition to document analysis.")
-                except Exception as e:
-                    st.error(f"Error creating research agent: {str(e)}")
+        st.subheader("🔍 System Status")
         
         # System information
         st.subheader("ℹ️ System Info")
@@ -178,7 +394,30 @@ def main():
         else:
             st.warning("📄 Documents: Not loaded")
         
+        if st.session_state.multi_agent_system:
+            st.success("🤖 Multi-Agent System: Active")
+            available_agents = list(st.session_state.multi_agent_system.agents.keys())
+            st.info(f"Available agents: {', '.join(available_agents)}")
+        else:
+            st.warning("🤖 Multi-Agent System: Not initialized")
+        
         st.info(f"💭 Memory: {len(st.session_state.chat_history)} messages")
+        
+        # Quick actions
+        st.subheader("⚡ Quick Actions")
+        
+        if st.button("🧪 Test Code Generation"):
+            try:
+                code_agent = create_code_generation_agent()
+                result = code_agent.run("Create a simple Python function to calculate fibonacci numbers")
+                st.code(result)
+            except Exception as e:
+                st.error(f"Test failed: {str(e)}")
+        
+        if st.button("📊 Show Templates"):
+            templates = st.session_state.code_generator.get_available_templates()
+            for name, desc in templates.items():
+                st.write(f"**{name}**: {desc}")
 
 if __name__ == "__main__":
     main()

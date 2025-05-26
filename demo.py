@@ -225,6 +225,102 @@ def demo_document_stats():
     print(f"Metadata fields: {', '.join(stats['metadata_fields'])}")
 
 
+def demo_code_generation():
+    """Demonstrate code generation capabilities."""
+    print("\n" + "="*50)
+    print("CODE GENERATION DEMO")
+    print("="*50)
+    
+    try:
+        from src.code_generator import CodeGenerator
+        
+        generator = CodeGenerator()
+        
+        # Show available templates
+        print("Available Templates:")
+        templates = generator.get_available_templates()
+        for name, desc in templates.items():
+            print(f"  • {name}: {desc}")
+        
+        print(f"\n{'-'*40}")
+        print("Template Example: Python Class")
+        print("-"*40)
+        
+        # Generate a Python class from template
+        result = generator.generate_from_template(
+            'python_class',
+            class_name='DataProcessor',
+            description='A class for processing and analyzing data',
+            init_params=', data_source: str',
+            init_body='self.data_source = data_source\n        self.data = []',
+            methods='''def load_data(self):
+        """Load data from source."""
+        # Implementation here
+        pass
+    
+    def process_data(self):
+        """Process the loaded data."""
+        # Implementation here
+        return self.data'''
+        )
+        
+        if result['success']:
+            print("✅ Generated Python class:")
+            print(result['code'])
+        else:
+            print(f"❌ Error: {result['error']}")
+        
+        # Demo template-based API generation
+        print(f"\n{'-'*40}")
+        print("Template Example: Flask API")
+        print("-"*40)
+        
+        api_result = generator.generate_from_template(
+            'flask_api',
+            endpoint='users',
+            method='GET',
+            function_name='get_users',
+            description='Get list of all users',
+            function_body='''# Get users from database
+    users = [
+        {"id": 1, "name": "John Doe", "email": "john@example.com"},
+        {"id": 2, "name": "Jane Smith", "email": "jane@example.com"}
+    ]''',
+            return_value='{"users": users, "count": len(users)}'
+        )
+        
+        if api_result['success']:
+            print("✅ Generated Flask API endpoint:")
+            print(api_result['code'][:300] + "...")
+        else:
+            print(f"❌ Error: {api_result['error']}")
+            
+        print(f"\n{'-'*40}")
+        print("AI-Powered Generation Example")
+        print("-"*40)
+        
+        # Only run AI generation if we have a valid API key
+        if os.getenv("OPENAI_API_KEY") and os.getenv("OPENAI_API_KEY") != 'test-key-for-import-testing':
+            ai_result = generator.generate_with_ai(
+                description="Create a Python function that calculates the fibonacci sequence up to n terms using memoization for optimization",
+                language="python"
+            )
+            
+            if ai_result['success']:
+                print("✅ AI-generated code:")
+                result_data = ai_result['result']
+                print(f"Explanation: {result_data['explanation'][:200]}...")
+                if result_data['code_blocks']:
+                    print(f"Code preview: {result_data['code_blocks'][0]['code'][:200]}...")
+            else:
+                print(f"❌ AI generation error: {ai_result['error']}")
+        else:
+            print("⚠️ Skipping AI generation (requires valid OpenAI API key)")
+        
+    except Exception as e:
+        print(f"❌ Code generation demo error: {str(e)}")
+
+
 def main():
     """Run all demonstrations."""
     print("LangChain Application Demonstration")
@@ -253,6 +349,7 @@ def main():
             qa_system = demo_qa_system(vector_store)
             demo_advanced_features(qa_system)
             demo_agents()
+            demo_code_generation()
         else:
             print("\nSkipping API-dependent demos (no OpenAI API key)")
         

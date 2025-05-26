@@ -8,11 +8,14 @@ from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.utilities import SerpAPIWrapper
-from langchain.tools.python.tool import PythonREPLTool
+from langchain.tools import PythonREPLTool
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseToolkit
 import requests
 import json
+
+# Import the new code generator
+from .code_generator import CodeGenerator
 
 
 class WebSearchTool:
@@ -157,11 +160,137 @@ analyze_code()
             return f"Error analyzing code: {str(e)}"
 
 
+class CodeGenerationTool:
+    """Advanced code generation tool with templates and AI assistance."""
+    
+    def __init__(self):
+        self.generator = CodeGenerator()
+    
+    def generate_code_from_description(self, description: str) -> str:
+        """Generate code from natural language description."""
+        try:
+            # Extract language and framework hints from description
+            language = "python"  # default
+            framework = None
+            
+            if "javascript" in description.lower() or "js" in description.lower():
+                language = "javascript"
+            elif "react" in description.lower():
+                language = "javascript"
+                framework = "react"
+            elif "flask" in description.lower():
+                framework = "flask"
+            elif "fastapi" in description.lower():
+                framework = "fastapi"
+            
+            result = self.generator.generate_with_ai(description, language, framework)
+            
+            if result['success']:
+                output = f"Generated {language} code"
+                if framework:
+                    output += f" using {framework}"
+                output += f":\n\n{result['result']['explanation']}\n\n"
+                
+                for block in result['result']['code_blocks']:
+                    output += f"```{block['language']}\n{block['code']}\n```\n\n"
+                
+                if result['result']['dependencies']:
+                    output += "Dependencies:\n"
+                    for dep in result['result']['dependencies']:
+                        output += f"- {dep}\n"
+                
+                return output
+            else:
+                return f"Error generating code: {result['error']}"
+                
+        except Exception as e:
+            return f"Error in code generation: {str(e)}"
+    
+    def generate_from_template(self, template_info: str) -> str:
+        """Generate code using predefined templates."""
+        try:
+            # Parse template info - expected format: "template_name:param1=value1,param2=value2"
+            if ":" not in template_info:
+                return f"Available templates: {', '.join(self.generator.get_available_templates().keys())}"
+            
+            template_name, params_str = template_info.split(":", 1)
+            
+            # Parse parameters
+            params = {}
+            if params_str.strip():
+                for param in params_str.split(","):
+                    if "=" in param:
+                        key, value = param.split("=", 1)
+                        params[key.strip()] = value.strip()
+            
+            result = self.generator.generate_from_template(template_name.strip(), **params)
+            
+            if result['success']:
+                return f"Generated code using {template_name} template:\n\n```\n{result['code']}\n```"
+            else:
+                return f"Error: {result['error']}"
+                
+        except Exception as e:
+            return f"Error in template generation: {str(e)}"
+    
+    def generate_api_client(self, api_spec: str) -> str:
+        """Generate API client code."""
+        try:
+            # Parse API specification
+            lines = api_spec.split('\n')
+            description = lines[0] if lines else "API Client"
+            base_url = "https://api.example.com"
+            endpoints = []
+            
+            # Simple parsing - in production would use proper API spec parser
+            for line in lines[1:]:
+                if line.strip().startswith("URL:"):
+                    base_url = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("GET") or line.strip().startswith("POST"):
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        endpoints.append({
+                            "method": parts[0],
+                            "path": parts[1],
+                            "description": " ".join(parts[2:]) if len(parts) > 2 else ""
+                        })
+            
+            result = self.generator.generate_api_client(description, base_url, endpoints)
+            
+            if result['success']:
+                output = f"Generated API client for: {description}\n\n"
+                output += result['client_code']['explanation'] + "\n\n"
+                
+                for block in result['client_code']['code_blocks']:
+                    output += f"```{block['language']}\n{block['code']}\n```\n\n"
+                
+                return output
+            else:
+                return f"Error generating API client: {result['error']}"
+                
+        except Exception as e:
+            return f"Error in API client generation: {str(e)}"
+    
+    def explain_code(self, code: str) -> str:
+        """Explain existing code."""
+        try:
+            result = self.generator.explain_code(code, detail_level="detailed")
+            
+            if result['success']:
+                return f"Code Explanation:\n\n{result['explanation']}"
+            else:
+                return f"Error explaining code: {result['error']}"
+                
+        except Exception as e:
+            return f"Error in code explanation: {str(e)}"
+
+
 def create_research_agent(qa_system=None) -> AgentExecutor:
     """Create a research agent with multiple tools."""
     
     # Initialize tools
     web_search = WebSearchTool()
+    code_generator = CodeGenerationTool()
     
     tools = [
         Tool(
@@ -173,6 +302,26 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
             name="python_calculator",
             description="Execute Python code for calculations, data analysis, or code generation.",
             func=PythonREPLTool().run
+        ),
+        Tool(
+            name="generate_code",
+            description="Generate code from natural language description. Provide a clear description of what you want to build.",
+            func=code_generator.generate_code_from_description
+        ),
+        Tool(
+            name="code_template",
+            description="Generate code using predefined templates. Format: 'template_name:param1=value1,param2=value2'. Call without parameters to see available templates.",
+            func=code_generator.generate_from_template
+        ),
+        Tool(
+            name="generate_api_client",
+            description="Generate API client code. Provide API description with endpoints in format: 'Description\\nURL: base_url\\nGET /endpoint1\\nPOST /endpoint2'",
+            func=code_generator.generate_api_client
+        ),
+        Tool(
+            name="explain_code",
+            description="Explain existing code with detailed analysis. Provide the code you want explained.",
+            func=code_generator.explain_code
         )
     ]
     
@@ -198,7 +347,7 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
     
     # Define the agent prompt
     agent_prompt = PromptTemplate.from_template("""
-    You are a research assistant with access to various tools. Your goal is to provide comprehensive, accurate answers by combining information from documents and web searches when necessary.
+    You are a research assistant with access to various tools including advanced code generation capabilities. Your goal is to provide comprehensive, accurate answers by combining information from documents, web searches, and code generation when necessary.
 
     Available tools:
     {tools}
@@ -212,6 +361,13 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
     ... (this Thought/Action/Action Input/Observation can repeat N times)
     Thought: I now know the final answer
     Final Answer: the final answer to the original input question
+
+    When asked to generate code:
+    1. Use generate_code for custom requirements
+    2. Use code_template for common patterns
+    3. Use generate_api_client for API-related tasks
+    4. Use explain_code to understand existing code
+    5. Use python_calculator for testing or running code
 
     Question: {input}
     Thought: {agent_scratchpad}
@@ -232,6 +388,79 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
     return agent_executor
 
 
+def create_code_generation_agent() -> AgentExecutor:
+    """Create a specialized agent focused on code generation tasks."""
+    
+    code_generator = CodeGenerationTool()
+    
+    tools = [
+        Tool(
+            name="generate_code",
+            description="Generate code from natural language description. Provide a clear description of what you want to build.",
+            func=code_generator.generate_code_from_description
+        ),
+        Tool(
+            name="code_template",
+            description="Generate code using predefined templates. Format: 'template_name:param1=value1,param2=value2'. Call without parameters to see available templates.",
+            func=code_generator.generate_from_template
+        ),
+        Tool(
+            name="generate_api_client",
+            description="Generate API client code. Provide API description with endpoints.",
+            func=code_generator.generate_api_client
+        ),
+        Tool(
+            name="explain_code",
+            description="Explain existing code with detailed analysis.",
+            func=code_generator.explain_code
+        ),
+        Tool(
+            name="python_executor",
+            description="Execute Python code for testing or validation.",
+            func=PythonREPLTool().run
+        )
+    ]
+    
+    llm = ChatOpenAI(temperature=0.1, model_name="gpt-3.5-turbo")
+    
+    agent_prompt = PromptTemplate.from_template("""
+    You are a specialized code generation assistant. You excel at creating high-quality, production-ready code in various programming languages and frameworks.
+
+    Available tools:
+    {tools}
+
+    Your capabilities include:
+    - Generating custom code from descriptions
+    - Using predefined templates for common patterns
+    - Creating API clients and integrations
+    - Explaining and analyzing existing code
+    - Testing code with Python execution
+
+    Use the following format:
+    Question: the input question you must answer
+    Thought: you should always think about what to do
+    Action: the action to take, should be one of [{tool_names}]
+    Action Input: the input to the action
+    Observation: the result of the action
+    ... (this Thought/Action/Action Input/Observation can repeat N times)
+    Thought: I now know the final answer
+    Final Answer: the final answer to the original input question
+
+    Question: {input}
+    Thought: {agent_scratchpad}
+    """)
+    
+    agent = create_react_agent(llm, tools, agent_prompt)
+    
+    return AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        max_iterations=10,
+        early_stopping_method="generate"
+    )
+
+
 class MultiAgentSystem:
     """System for managing multiple specialized agents."""
     
@@ -246,6 +475,9 @@ class MultiAgentSystem:
             # Research agent
             self.agents['research'] = create_research_agent(self.qa_system)
             
+            # Code generation agent
+            self.agents['code_generation'] = create_code_generation_agent()
+            
             # Add more specialized agents here as needed
             # self.agents['data_analysis'] = create_data_analysis_agent()
             # self.agents['code_review'] = create_code_review_agent()
@@ -255,10 +487,19 @@ class MultiAgentSystem:
     
     def route_query(self, query: str) -> str:
         """Route query to the most appropriate agent."""
-        # Simple routing logic - can be enhanced with ML classification
+        # Enhanced routing logic for code generation
         query_lower = query.lower()
         
-        if any(keyword in query_lower for keyword in ['search', 'web', 'current', 'latest', 'news']):
+        # Code generation keywords
+        code_keywords = [
+            'generate', 'create', 'build', 'write', 'code', 'function', 'class', 
+            'api', 'client', 'template', 'script', 'program', 'implement',
+            'flask', 'react', 'python', 'javascript', 'sql', 'database'
+        ]
+        
+        if any(keyword in query_lower for keyword in code_keywords):
+            return 'code_generation'
+        elif any(keyword in query_lower for keyword in ['search', 'web', 'current', 'latest', 'news']):
             return 'research'
         elif any(keyword in query_lower for keyword in ['analyze', 'sentiment', 'topics']):
             return 'research'  # Research agent has analysis tools

@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).parent / "src"))
 from src.document_processor import DocumentProcessor
 from src.qa_system import QASystem
 from src.agents import create_research_agent, MultiAgentSystem
+from src.code_generator import CodeGenerator
 from src.utils import setup_logging, validate_environment, DocumentStats
 from langchain.memory import ConversationBufferWindowMemory
 
@@ -20,11 +21,17 @@ from langchain.memory import ConversationBufferWindowMemory
 def main():
     """Main CLI function."""
     parser = argparse.ArgumentParser(description="LangChain Document Q&A System")
-    parser.add_argument("--mode", choices=["web", "cli"], default="web", help="Run mode")
+    parser.add_argument("--mode", choices=["web", "cli", "codegen"], default="web", help="Run mode")
     parser.add_argument("--docs", nargs="+", help="Document files to process")
     parser.add_argument("--url", help="URL to scrape and process")
     parser.add_argument("--query", help="Query to ask (CLI mode only)")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    
+    # Code generation arguments
+    parser.add_argument("--template", help="Code template name (codegen mode)")
+    parser.add_argument("--description", help="Code description for AI generation (codegen mode)")
+    parser.add_argument("--language", default="python", help="Programming language (codegen mode)")
+    parser.add_argument("--list-templates", action="store_true", help="List available code templates")
     
     args = parser.parse_args()
     
@@ -44,6 +51,58 @@ def main():
         # Run Streamlit app
         import subprocess
         subprocess.run(["streamlit", "run", "app.py"])
+    
+    elif args.mode == "codegen":
+        # Code generation mode
+        generator = CodeGenerator()
+        
+        if args.list_templates:
+            print("Available Code Templates:")
+            templates = generator.get_available_templates()
+            for name, desc in templates.items():
+                print(f"  • {name}: {desc}")
+            return
+        
+        if args.template:
+            print(f"Using template: {args.template}")
+            print("Note: Template-based generation requires specific parameters.")
+            print("Use the web interface for interactive template generation.")
+            
+        elif args.description:
+            print(f"Generating {args.language} code for: {args.description}")
+            try:
+                result = generator.generate_with_ai(
+                    description=args.description,
+                    language=args.language
+                )
+                
+                if result['success']:
+                    print("\n" + "="*50)
+                    print("GENERATED CODE")
+                    print("="*50)
+                    
+                    result_data = result['result']
+                    print(f"Explanation: {result_data['explanation']}")
+                    
+                    for i, block in enumerate(result_data['code_blocks'], 1):
+                        print(f"\nCode Block {i} ({block['language']}):")
+                        print("-" * 30)
+                        print(block['code'])
+                    
+                    if result_data['dependencies']:
+                        print(f"\nDependencies:")
+                        for dep in result_data['dependencies']:
+                            print(f"  • {dep}")
+                            
+                else:
+                    print(f"Error generating code: {result['error']}")
+                    
+            except Exception as e:
+                logger.error(f"Code generation error: {e}")
+        
+        else:
+            print("Please provide --description for AI generation or --template for template-based generation")
+            print("Use --list-templates to see available templates")
     
     elif args.mode == "cli":
         # Run CLI mode
