@@ -397,31 +397,46 @@ def create_code_generation_agent() -> AgentExecutor:
     code_generator = CodeGenerationTool()
     code_analyzer = CodeAnalysisTool()
     
+    # Wrapper functions to ensure consistent return types
+    def wrap_tool(func):
+        def wrapper(*args, **kwargs):
+            try:
+                result = func(*args, **kwargs)
+                if isinstance(result, dict) and 'success' in result:
+                    if result['success']:
+                        return str(result.get('result', result.get('explanation', 'Success'))) if 'result' in result or 'explanation' in result else 'Success'
+                    else:
+                        return f"Error: {result.get('error', 'Unknown error')}"
+                return str(result) if result is not None else 'No output'
+            except Exception as e:
+                return f"Error executing tool: {str(e)}"
+        return wrapper
+    
     tools = [
         Tool(
             name="generate_code",
             description="Generate code from natural language description. Provide a clear description of what you want to build.",
-            func=code_generator.generate_code_from_description
+            func=wrap_tool(code_generator.generate_code_from_description)
         ),
         Tool(
             name="code_template",
             description="Generate code using predefined templates. Provide template name and required variables.",
-            func=code_generator.generate_from_template
+            func=wrap_tool(code_generator.generate_from_template)
         ),
         Tool(
             name="generate_api_client",
-            description="Generate API client code. Provide API description, base URL, and endpoints.",
-            func=code_generator.generate_api_client
+            description="Generate API client code. Provide API description, base URL, and endpoints as a JSON string.",
+            func=wrap_tool(code_generator.generate_api_client)
         ),
         Tool(
             name="explain_code",
             description="Explain what a piece of code does. Provide the code and optionally the detail level (basic, detailed, or advanced).",
-            func=code_generator.explain_code
+            func=wrap_tool(code_generator.explain_code)
         ),
         Tool(
             name="analyze_code",
             description="Analyze a code snippet. Provide the code to analyze.",
-            func=code_analyzer.analyze_code_snippet
+            func=wrap_tool(code_analyzer.analyze_code_snippet)
         )
     ]
     
@@ -431,30 +446,30 @@ def create_code_generation_agent() -> AgentExecutor:
     )
     
     agent_prompt = PromptTemplate.from_template("""
-    You are a specialized code generation assistant. You excel at creating high-quality, production-ready code in various programming languages and frameworks.
+You are a specialized code generation assistant. You excel at creating high-quality, production-ready code in various programming languages and frameworks.
 
-    Available tools:
-    {tools}
+Available tools:
+{tools}
 
-    Your capabilities include:
-    - Generating custom code from descriptions
-    - Using predefined templates for common patterns
-    - Creating API clients and integrations
-    - Explaining and analyzing existing code
+Your capabilities include:
+- Generating custom code from descriptions
+- Using predefined templates for common patterns
+- Creating API clients and integrations
+- Explaining and analyzing existing code
 
-    Use the following format:
-    Question: the input question you must answer
-    Thought: you should always think about what to do
-    Action: the action to take, should be one of [{tool_names}]
-    Action Input: the input to the action
-    Observation: the result of the action
-    ... (this Thought/Action/Action Input/Observation can repeat N times)
-    Thought: I now know the final answer
-    Final Answer: the final answer to the original input question
+Use the following format:
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
 
-    Question: {input}
-    Thought: {agent_scratchpad}
-    """)
+Question: {input}
+Thought: {agent_scratchpad}
+""")
     
     agent = create_react_agent(llm, tools, agent_prompt)
     
@@ -462,8 +477,10 @@ def create_code_generation_agent() -> AgentExecutor:
         agent=agent,
         tools=tools,
         verbose=True,
-        max_iterations=10,
-        early_stopping_method="generate"
+        max_iterations=5,  # Reduced from 10 to prevent long-running operations
+        early_stopping_method="generate",
+        handle_parsing_errors=True,
+        return_intermediate_steps=True
     )
 
 
