@@ -395,6 +395,7 @@ def create_code_generation_agent() -> AgentExecutor:
     """Create a specialized agent focused on code generation tasks."""
     
     code_generator = CodeGenerationTool()
+    code_analyzer = CodeAnalysisTool()
     
     tools = [
         Tool(
@@ -418,9 +419,9 @@ def create_code_generation_agent() -> AgentExecutor:
             func=code_generator.explain_code
         ),
         Tool(
-            name="python_repl",
-            description="Execute Python code. Use this to test code snippets.",
-            func=code_generator.python_repl.run
+            name="analyze_code",
+            description="Analyze a code snippet. Provide the code to analyze.",
+            func=code_analyzer.analyze_code_snippet
         )
     ]
     
@@ -440,7 +441,6 @@ def create_code_generation_agent() -> AgentExecutor:
     - Using predefined templates for common patterns
     - Creating API clients and integrations
     - Explaining and analyzing existing code
-    - Testing code with Python execution
 
     Use the following format:
     Question: the input question you must answer
