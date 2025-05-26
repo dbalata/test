@@ -293,29 +293,26 @@ def main():
         render_code_generation_section()
     
     # Main content area
-    col1, col2 = st.columns([2, 1])
+    st.subheader("💬 Chat Interface")
     
-    with col1:
-        st.subheader("💬 Chat Interface")
-        
-        # Agent selection
-        agent_type = st.selectbox(
-            "Select Agent Type",
-            ["auto", "research", "code_generation"],
-            help="Choose which agent to use, or let the system decide automatically"
-        )
-        
-        # Display chat history
-        chat_container = st.container()
-        with chat_container:
-            for message in st.session_state.chat_history:
-                if isinstance(message, HumanMessage):
-                    st.chat_message("user").write(message.content)
-                elif isinstance(message, AIMessage):
-                    st.chat_message("assistant").write(message.content)
-        
-        # Chat input
-        if prompt := st.chat_input("Ask a question about your documents or request code generation..."):
+    # Agent selection
+    agent_type = st.selectbox(
+        "Select Agent Type",
+        ["auto", "research", "code_generation"],
+        help="Choose which agent to use, or let the system decide automatically"
+    )
+    
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        for message in st.session_state.chat_history:
+            if isinstance(message, HumanMessage):
+                st.chat_message("user").write(message.content)
+            elif isinstance(message, AIMessage):
+                st.chat_message("assistant").write(message.content)
+    
+    # Chat input - must be at the bottom level of the app, not inside columns or other containers
+    if prompt := st.chat_input("Ask a question about your documents or request code generation..."):
             # Add user message to chat history
             user_message = HumanMessage(content=prompt)
             st.session_state.chat_history.append(user_message)
@@ -382,43 +379,63 @@ def main():
                         st.error(error_msg)
                         logger.error(error_msg)
     
-    with col2:
-        st.subheader("🔍 System Status")
-        
-        # System information
+    # System status section
+    st.markdown("---")
+    st.subheader("🔍 System Status")
+    
+    # System information in columns
+    col1, col2 = st.columns(2)
+    
+    with col1:
         st.subheader("ℹ️ System Info")
         if st.session_state.documents_loaded:
             st.success("📄 Documents: Loaded")
-            if st.session_state.qa_system:
-                doc_count = len(st.session_state.qa_system.vector_store.get()['ids'])
-                st.info(f"📊 Document chunks: {doc_count}")
+            if st.session_state.qa_system and hasattr(st.session_state.qa_system, 'vector_store'):
+                try:
+                    doc_count = len(st.session_state.qa_system.vector_store.get()['ids'])
+                    st.info(f"📊 Document chunks: {doc_count}")
+                except:
+                    st.info("📊 Document chunks: Information not available")
         else:
             st.warning("📄 Documents: Not loaded")
-        
+    
+    with col2:
+        st.subheader("🤖 Agent Status")
         if st.session_state.multi_agent_system:
-            st.success("🤖 Multi-Agent System: Active")
+            st.success("Multi-Agent System: Active")
             available_agents = list(st.session_state.multi_agent_system.agents.keys())
             st.info(f"Available agents: {', '.join(available_agents)}")
         else:
-            st.warning("🤖 Multi-Agent System: Not initialized")
+            st.warning("Multi-Agent System: Not initialized")
         
         st.info(f"💭 Memory: {len(st.session_state.chat_history)} messages")
-        
-        # Quick actions
-        st.subheader("⚡ Quick Actions")
-        
-        if st.button("🧪 Test Code Generation"):
+    
+    # Quick actions
+    st.markdown("---")
+    st.subheader("⚡ Quick Actions")
+    
+    action_col1, action_col2 = st.columns(2)
+    
+    with action_col1:
+        if st.button("🧪 Test Code Generation", use_container_width=True):
             try:
                 code_agent = create_code_generation_agent()
                 result = code_agent.run("Create a simple Python function to calculate fibonacci numbers")
                 st.code(result)
             except Exception as e:
                 st.error(f"Test failed: {str(e)}")
-        
-        if st.button("📊 Show Templates"):
-            templates = st.session_state.code_generator.get_available_templates()
-            for name, desc in templates.items():
-                st.write(f"**{name}**: {desc}")
+    
+    with action_col2:
+        if st.button("📊 Show Templates", use_container_width=True):
+            try:
+                templates = st.session_state.code_generator.get_available_templates()
+                if templates:
+                    for name, desc in templates.items():
+                        st.write(f"**{name}**: {desc}")
+                else:
+                    st.info("No templates available")
+            except Exception as e:
+                st.error(f"Failed to load templates: {str(e)}")
 
 if __name__ == "__main__":
     main()

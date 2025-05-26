@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     # LLM settings
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    DEFAULT_MODEL: str = "openai/gpt-4-turbo"
+    DEFAULT_MODEL: str = "deepseek/deepseek-chat-v3-0324:free"
     
+
     # Document processing settings
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200

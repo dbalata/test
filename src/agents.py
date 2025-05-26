@@ -7,9 +7,9 @@ from typing import List, Dict, Any, Optional
 from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.utilities import SerpAPIWrapper
-from langchain.tools import PythonREPLTool
+from langchain_experimental.tools import PythonREPLTool
 from langchain.prompts import PromptTemplate
-from langchain.schema import BaseToolkit
+from langchain.agents.agent_toolkits.base import BaseToolkit
 from .openrouter_utils import get_openrouter_llm
 import requests
 import json
