@@ -1,6 +1,6 @@
-# Advanced LangChain Document Q&A System
+# Advanced LangChain Document Q&A Web Application
 
-A comprehensive LangChain application demonstrating advanced features including document processing, retrieval-augmented generation (RAG), intelligent agents, and a web interface.
+A comprehensive web-based LangChain application for document processing, retrieval-augmented generation (RAG), and intelligent question-answering with a modern web interface.
 
 ## Features
 
@@ -9,7 +9,7 @@ A comprehensive LangChain application demonstrating advanced features including 
 - **Vector Storage**: ChromaDB with OpenAI embeddings for semantic search
 - **Retrieval-Augmented Generation (RAG)**: Contextual Q&A with source citations
 - **Conversation Memory**: Maintains context across multiple interactions
-- **Web Interface**: Beautiful Streamlit-based UI
+- **Modern Web Interface**: Beautiful Streamlit-based UI
 
 ### 🤖 Advanced AI Features
 - **Intelligent Agents**: Research agent with web search and analysis tools
@@ -23,15 +23,19 @@ A comprehensive LangChain application demonstrating advanced features including 
 - **Performance Monitoring**: Track response times and success rates
 - **Comprehensive Logging**: Detailed logging with file and console output
 - **Error Handling**: Robust error handling and validation
-- **CLI Interface**: Command-line interface for automation
 
 ## Quick Start
 
 ### 1. Installation
 
 ```bash
-# Clone or download the project
-cd /workspaces/test
+# Clone the repository
+git clone <repository-url>
+cd <repository-directory>
+
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -39,31 +43,20 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-Create a `.env` file with your API keys:
+Create a `.env` file in the project root with your API keys:
 
-```env
+```
 OPENAI_API_KEY=your_openai_api_key_here
 SERPAPI_API_KEY=your_serpapi_key_here  # Optional, for enhanced web search
 ```
 
-### 3. Run the Application
+### 3. Run the Web Application
 
-#### Web Interface (Recommended)
 ```bash
 streamlit run app.py
 ```
 
-#### Command Line Interface
-```bash
-# Process documents and start interactive Q&A
-python cli.py --mode cli --docs data/sample.txt
-
-# Process a URL
-python cli.py --mode cli --url https://example.com
-
-# Ask a single question
-python cli.py --mode cli --docs data/sample.txt --query "What is the main topic?"
-```
+The application will open in your default web browser at `http://localhost:8501`
 
 ## Usage Guide
 
@@ -100,50 +93,28 @@ The system automatically routes queries to appropriate agents:
 
 ### Example Workflows
 
-#### 1. Academic Research
-```python
-# Upload research papers (PDFs)
-# Ask: "What are the main methodological differences between these studies?"
-# Use sentiment analysis to understand author perspectives
-```
+#### Academic Research
+- Upload research papers
+- Ask: "What are the main methodological differences between these studies?"
+- Use sentiment analysis to understand author perspectives
 
-#### 2. Business Intelligence
-```python
-# Upload reports and web scrape company pages
-# Ask: "What are the key growth drivers mentioned?"
-# Use topic extraction to identify strategic themes
-```
+#### Business Intelligence
+- Upload reports and web scrape company pages
+- Ask: "What are the key growth drivers mentioned?"
 
-#### 3. Technical Documentation
-```python
-# Upload code documentation and tutorials
-# Ask: "How do I implement authentication?"
-# Use code analysis for technical insights
-```
+#### Technical Documentation
+- Upload API documentation and code examples
+- Ask: "How do I implement OAuth authentication?"
+- Find relevant code examples and implementation details
 
 ## Architecture
 
 ### Core Components
 
-1. **DocumentProcessor** (`src/document_processor.py`)
-   - Handles multiple document formats
-   - Creates embeddings and vector storage
-   - Manages document metadata
-
-2. **QASystem** (`src/qa_system.py`)
-   - Implements RAG pipeline
-   - Manages conversation memory
-   - Provides confidence scoring
-
-3. **Agents** (`src/agents.py`)
-   - Research agent with web search
-   - Document analysis tools
-   - Multi-agent coordination
-
-4. **Utils** (`src/utils.py`)
-   - Configuration management
-   - Performance monitoring
-   - Text processing utilities
+1. **DocumentProcessor**: Handles document loading, preprocessing, and vector storage
+2. **QASystem**: Implements the RAG pipeline for question-answering
+3. **Agents**: Specialized agents for different types of queries
+4. **Utils**: Supporting utilities for configuration, logging, and text processing
 
 ### Data Flow
 
@@ -203,10 +174,11 @@ Customize the system via `config.json`:
    - Clear conversation history if needed
 
 ### Debug Mode
-Enable verbose logging for troubleshooting:
+Enable verbose logging for troubleshooting by setting the environment variable before starting the application:
 
 ```bash
-python cli.py --verbose --mode cli --docs your_document.pdf
+export LOG_LEVEL=DEBUG
+streamlit run app.py
 ```
 
 ## Advanced Customization
@@ -240,13 +212,13 @@ def get_domain_specific_prompt():
 
 ## Contributing
 
-This is a demonstration project showcasing LangChain capabilities. Feel free to:
+Contributions are welcome! Here are some ways you can contribute:
 
-1. Add new document processors
-2. Implement additional agents
-3. Enhance the UI/UX
-4. Add new analysis tools
-5. Improve performance optimizations
+1. Add support for new document formats
+2. Enhance the web interface with new features
+3. Improve the document processing pipeline
+4. Add new analysis and visualization tools
+5. Optimize performance and scalability
 
 ## Dependencies
 
@@ -259,7 +231,7 @@ This is a demonstration project showcasing LangChain capabilities. Feel free to:
 
 ## License
 
-This project is for educational and demonstration purposes. Please ensure compliance with API terms of service and applicable licenses for production use.
+This project is licensed under the MIT License. Please ensure compliance with the terms of service of any third-party APIs and services used in the application.
 
 ---
 
