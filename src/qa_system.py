@@ -3,13 +3,14 @@ Question-Answering system using Retrieval-Augmented Generation (RAG).
 """
 
 from typing import Dict, List, Any
-from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseRetriever, Document
 from langchain.vectorstores import Chroma
+
+# Import our OpenRouter utilities
+from .openrouter_utils import get_openrouter_llm
 
 
 class CustomQAPromptTemplate:
@@ -61,9 +62,9 @@ class QASystem:
     def __init__(self, vector_store: Chroma, memory: ConversationBufferWindowMemory):
         self.vector_store = vector_store
         self.memory = memory
-        self.llm = ChatOpenAI(
+        self.llm = get_openrouter_llm(
+            model_name="openai/gpt-3.5-turbo",
             temperature=0.1,
-            model_name="gpt-3.5-turbo",
             max_tokens=1000
         )
         

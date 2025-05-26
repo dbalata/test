@@ -5,12 +5,12 @@ Advanced agents with specialized tools and capabilities.
 import os
 from typing import List, Dict, Any, Optional
 from langchain.agents import Tool, AgentExecutor, create_react_agent
-from langchain.chat_models import ChatOpenAI
 from langchain.tools import DuckDuckGoSearchRun
 from langchain.utilities import SerpAPIWrapper
 from langchain.tools import PythonREPLTool
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseToolkit
+from .openrouter_utils import get_openrouter_llm
 import requests
 import json
 
@@ -301,7 +301,7 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
         Tool(
             name="python_calculator",
             description="Execute Python code for calculations, data analysis, or code generation.",
-            func=PythonREPLTool().run
+            func=code_generator.python_repl.run
         ),
         Tool(
             name="generate_code",
@@ -343,7 +343,10 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
         ])
     
     # Create the agent
-    llm = ChatOpenAI(temperature=0.1, model_name="gpt-3.5-turbo")
+    llm = get_openrouter_llm(
+        model_name="openai/gpt-3.5-turbo",
+        temperature=0.2
+    )
     
     # Define the agent prompt
     agent_prompt = PromptTemplate.from_template("""
@@ -401,27 +404,30 @@ def create_code_generation_agent() -> AgentExecutor:
         ),
         Tool(
             name="code_template",
-            description="Generate code using predefined templates. Format: 'template_name:param1=value1,param2=value2'. Call without parameters to see available templates.",
+            description="Generate code using predefined templates. Provide template name and required variables.",
             func=code_generator.generate_from_template
         ),
         Tool(
             name="generate_api_client",
-            description="Generate API client code. Provide API description with endpoints.",
+            description="Generate API client code. Provide API description, base URL, and endpoints.",
             func=code_generator.generate_api_client
         ),
         Tool(
             name="explain_code",
-            description="Explain existing code with detailed analysis.",
+            description="Explain what a piece of code does. Provide the code and optionally the detail level (basic, detailed, or advanced).",
             func=code_generator.explain_code
         ),
         Tool(
-            name="python_executor",
-            description="Execute Python code for testing or validation.",
-            func=PythonREPLTool().run
+            name="python_repl",
+            description="Execute Python code. Use this to test code snippets.",
+            func=code_generator.python_repl.run
         )
     ]
     
-    llm = ChatOpenAI(temperature=0.1, model_name="gpt-3.5-turbo")
+    llm = get_openrouter_llm(
+        model_name="openai/gpt-3.5-turbo",
+        temperature=0.1
+    )
     
     agent_prompt = PromptTemplate.from_template("""
     You are a specialized code generation assistant. You excel at creating high-quality, production-ready code in various programming languages and frameworks.

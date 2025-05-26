@@ -6,10 +6,10 @@ with different patterns and frameworks.
 
 import os
 from typing import Dict, List, Any, Optional
-from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.schema import BaseOutputParser
+from .openrouter_utils import get_openrouter_llm
 import json
 import re
 
@@ -67,7 +67,10 @@ class CodeGenerator:
     """Main code generation system with templates and AI assistance."""
     
     def __init__(self):
-        self.llm = ChatOpenAI(temperature=0.1, model_name="gpt-3.5-turbo")
+        self.llm = get_openrouter_llm(
+            model_name="openai/gpt-3.5-turbo",
+            temperature=0.1
+        )
         self.parser = CodeOutputParser()
         self.templates = self._initialize_templates()
         

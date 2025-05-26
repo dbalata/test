@@ -9,6 +9,7 @@ from src.qa_system import QASystem
 from src.agents import create_research_agent, create_code_generation_agent, MultiAgentSystem
 from src.code_generator import CodeGenerator
 from src.utils import setup_logging
+from src.openrouter_utils import get_openrouter_llm
 
 # Load environment variables
 load_dotenv()
@@ -223,11 +224,11 @@ def main():
         st.header("Configuration")
         
         # API Key check
-        if not os.getenv("OPENAI_API_KEY"):
-            st.error("Please set your OPENAI_API_KEY in the .env file")
+        if not os.getenv("OPENROUTER_API_KEY"):
+            st.error("Please set your OPENROUTER_API_KEY in the .env file")
             st.stop()
         
-        st.success("✅ OpenAI API Key configured")
+        st.success("✅ OpenRouter API Key configured")
         
         # Document upload section
         st.subheader("📄 Document Management")
