@@ -4,12 +4,14 @@ Advanced agents with specialized tools and capabilities.
 
 import os
 from typing import List, Dict, Any, Optional
-from langchain.agents import Tool, AgentExecutor, create_react_agent
-from langchain.tools import DuckDuckGoSearchRun
-from langchain.utilities import SerpAPIWrapper
+from langchain.agents import AgentExecutor, create_react_agent, Tool
+from langchain.agents.format_scratchpad import format_log_to_str
+from langchain.agents.output_parsers import ReActSingleInputOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.tools import BaseToolkit
+from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.utilities import SerpAPIWrapper
 from langchain_experimental.tools import PythonREPLTool
-from langchain.prompts import PromptTemplate
-from langchain.agents.agent_toolkits.base import BaseToolkit
 from .openrouter_utils import get_openrouter_llm
 import requests
 import json
@@ -35,7 +37,12 @@ class WebSearchTool:
     def search(self, query: str) -> str:
         """Perform web search."""
         try:
-            return self.search_engine.run(query)
+            if hasattr(self.search_engine, 'invoke'):
+                result = self.search_engine.invoke(query)
+                return result if isinstance(result, str) else str(result)
+            else:
+                # Fallback to run() if invoke is not available
+                return self.search_engine.run(query)
         except Exception as e:
             return f"Search error: {str(e)}"
 
@@ -110,51 +117,67 @@ class CodeAnalysisTool:
     def analyze_code_snippet(self, code: str) -> str:
         """Analyze a code snippet."""
         try:
+            # Simple analysis using the Python REPL
             analysis_code = f"""
-# Code to analyze:
-{code}
+# Analyze the following code
+code = '''{code}'''
 
-# Analysis
-import ast
-import sys
-from io import StringIO
-
-def analyze_code():
-    code_to_analyze = '''{code}'''
+# Basic analysis
+try:
+    # Check syntax
+    import ast
+    tree = ast.parse(code)
     
+    # Get functions and classes
+    functions = [f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)]
+    classes = [c.name for c in ast.walk(tree) if isinstance(c, ast.ClassDef)]
+    
+    # Get imports
+    imports = [i.names[0].name for i in ast.walk(tree) if isinstance(i, ast.Import)]
+    imports.extend([i.module for i in ast.walk(tree) if isinstance(i, ast.ImportFrom) and i.module is not None])
+    
+    # Get docstrings
+    docstrings = [ast.get_docstring(node) for node in ast.walk(tree) if (isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Module)) and ast.get_docstring(node))]
+    
+    analysis = {{
+        'functions': functions,
+        'classes': classes,
+        'imports': imports,
+        'has_docstrings': len(docstrings) > 0,
+        'docstring_count': len(docstrings)
+    }}
+    
+    # Try to execute the code to see if it runs
     try:
-        tree = ast.parse(code_to_analyze)
-        
-        # Count different node types
-        node_counts = {{}}
-        for node in ast.walk(tree):
-            node_type = type(node).__name__
-            node_counts[node_type] = node_counts.get(node_type, 0) + 1
-        
-        print("Code Analysis Results:")
-        print(f"Total AST nodes: {{sum(node_counts.values())}}")
-        print("Node type distribution:")
-        for node_type, count in sorted(node_counts.items()):
-            print(f"  {{node_type}}: {{count}}")
-        
-        # Check for common patterns
-        functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
-        classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-        
-        if functions:
-            print(f"Functions found: {{', '.join(functions)}}")
-        if classes:
-            print(f"Classes found: {{', '.join(classes)}}")
-        
-    except SyntaxError as e:
-        print(f"Syntax error in code: {{e}}")
+        # Execute in a restricted environment
+        restricted_globals = {{'__builtins__': {{}}}}
+        exec(code, restricted_globals)
+        analysis['execution_success'] = True
     except Exception as e:
-        print(f"Error analyzing code: {{e}}")
+        analysis['execution_success'] = False
+        analysis['execution_error'] = str(e)
+    
+    # Format the analysis
+    result = {{
+        'success': True,
+        'analysis': analysis,
+        'summary': f"Code analysis complete. Found {{len(functions)}} functions, {{len(classes)}} classes, and {{len(imports)}} imports."
+    }}
+    
+except Exception as e:
+    result = {{
+        'success': False,
+        'error': f"Error analyzing code: {{str(e)}}"
+    }}
 
-analyze_code()
-"""
-            
-            return self.python_repl.run(analysis_code)
+result
+""".format(code=code.replace("'", "\\'"))
+            if hasattr(self.python_repl, 'invoke'):
+                result = self.python_repl.invoke(analysis_code)
+                return result if isinstance(result, str) else str(result)
+            else:
+                # Fallback to run() if invoke is not available
+                return self.python_repl.run(analysis_code)
             
         except Exception as e:
             return f"Error analyzing code: {str(e)}"
@@ -376,8 +399,13 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
     Thought: {agent_scratchpad}
     """)
     
-    # Create the agent
-    agent = create_react_agent(llm, tools, agent_prompt)
+    # Create the agent with tools
+    agent = {
+        "input": lambda x: x["input"],
+        "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]),
+        "tools": lambda _: tools,
+        "tool_names": lambda _: ", ".join([t.name for t in tools]),
+    } | agent_prompt | llm | ReActSingleInputOutputParser()
     
     # Create agent executor
     agent_executor = AgentExecutor(
@@ -471,7 +499,13 @@ Question: {input}
 Thought: {agent_scratchpad}
 """)
     
-    agent = create_react_agent(llm, tools, agent_prompt)
+    # Create the agent with tools
+    agent = {
+        "input": lambda x: x["input"],
+        "agent_scratchpad": lambda x: format_log_to_str(x["intermediate_steps"]),
+        "tools": lambda _: tools,
+        "tool_names": lambda _: ", ".join([t.name for t in tools]),
+    } | agent_prompt | llm | ReActSingleInputOutputParser()
     
     return AgentExecutor(
         agent=agent,
@@ -542,11 +576,17 @@ class MultiAgentSystem:
         
         try:
             agent = self.agents[agent_type]
-            result = agent.run(query)
+            result = agent.invoke({"input": query})
             
+            # Handle different result formats
+            if isinstance(result, dict) and 'output' in result:
+                result_output = result['output']
+            else:
+                result_output = result
+                
             return {
                 "agent_used": agent_type,
-                "result": result,
+                "result": result_output,
                 "query": query
             }
             

@@ -6,9 +6,10 @@ with different patterns and frameworks.
 
 import os
 from typing import Dict, List, Any, Optional
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain.schema import BaseOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.language_models import BaseLanguageModel
+from langchain.chains.llm import LLMChain
+from langchain_core.output_parsers import BaseOutputParser
 from .openrouter_utils import get_openrouter_llm
 import json
 import re
@@ -276,11 +277,11 @@ Code:
         chain = LLMChain(llm=self.llm, prompt=prompt_template, output_parser=self.parser)
         
         try:
-            result = chain.run(
-                description=description,
-                language=language,
-                framework=framework or "standard library"
-            )
+            result = chain.invoke({
+                "description": description,
+                "language": language,
+                "framework": framework or "standard library"
+            })
             
             return {
                 'success': True,

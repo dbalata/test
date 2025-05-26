@@ -3,11 +3,15 @@ Question-Answering system using Retrieval-Augmented Generation (RAG).
 """
 
 from typing import Dict, List, Any
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.memory import ConversationBufferWindowMemory
-from langchain.prompts import PromptTemplate
-from langchain.schema import BaseRetriever, Document
-from langchain.vectorstores import Chroma
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.prompts import PromptTemplate
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
+from langchain_community.vectorstores import Chroma
 
 # Import our OpenRouter utilities
 from .openrouter_utils import get_openrouter_llm

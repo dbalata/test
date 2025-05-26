@@ -420,7 +420,7 @@ def main():
         if st.button("🧪 Test Code Generation", use_container_width=True):
             try:
                 code_agent = create_code_generation_agent()
-                result = code_agent.run("Create a simple Python function to calculate fibonacci numbers")
+                result = code_agent.invoke({"input": "Create a simple Python function to calculate fibonacci numbers"})
                 st.code(result)
             except Exception as e:
                 st.error(f"Test failed: {str(e)}")
