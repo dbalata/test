@@ -245,44 +245,64 @@ class Test{class_name}:
     
     def generate_with_ai(self, description: str, language: str = "python", framework: str = None) -> Dict[str, Any]:
         """Generate code using AI based on natural language description."""
-        
-        # Create prompt template
-        prompt_template = PromptTemplate(
-            input_variables=["description", "language", "framework"],
-            template="""
-Generate {language} code based on the following description:
-
-Description: {description}
-Programming Language: {language}
-Framework/Library: {framework}
-
-Please provide:
-1. Complete, working code with proper error handling
-2. Clear comments explaining the logic
-3. Any required dependencies or imports
-4. Usage examples if applicable
-5. Best practices and security considerations
-
-Format your response with:
-- Brief explanation of the approach
-- Main code in a code block
-- Dependencies (if any)
-- Usage examples
-
-Code:
-"""
-        )
-        
-        # Create chain
-        chain = LLMChain(llm=self.llm, prompt=prompt_template, output_parser=self.parser)
+        logger = logging.getLogger(__name__)
+        logger.info("Starting AI code generation")
+        logger.debug(f"Input parameters - Language: {language}, Framework: {framework or 'None'}")
+        logger.debug(f"Description: {description}")
         
         try:
-            result = chain.invoke({
+            # Create prompt template
+            prompt_template = PromptTemplate(
+                input_variables=["description", "language", "framework"],
+                template="""
+    Generate {language} code based on the following description:
+
+    Description: {description}
+    Programming Language: {language}
+    Framework/Library: {framework}
+
+    Please provide:
+    1. Complete, working code with proper error handling
+    2. Clear comments explaining the logic
+    3. Any required dependencies or imports
+    4. Usage examples if applicable
+    5. Best practices and security considerations
+
+    Format your response with:
+    - Brief explanation of the approach
+    - Main code in a code block
+    - Dependencies (if any)
+    - Usage examples
+
+    Code:
+    """
+            )
+            
+            logger.debug("Created prompt template")
+            
+            # Create chain
+            logger.debug("Creating LLMChain")
+            chain = LLMChain(llm=self.llm, prompt=prompt_template, output_parser=self.parser)
+            
+            # Prepare input for the chain
+            chain_input = {
                 "description": description,
                 "language": language,
                 "framework": framework or "standard library"
-            })
+            }
+            logger.debug(f"Chain input: {json.dumps(chain_input, indent=2)}")
             
+            # Invoke the chain
+            logger.info("Invoking LLM chain...")
+            result = chain.invoke(chain_input)
+            logger.debug(f"Raw LLM response: {json.dumps(result, indent=2, default=str)}")
+            
+            # Ensure result is a dictionary
+            if not isinstance(result, dict):
+                logger.warning(f"Unexpected result type: {type(result)}")
+                result = {'output': str(result)}
+            
+            logger.info("AI code generation completed successfully")
             return {
                 'success': True,
                 'result': result,
@@ -292,9 +312,12 @@ Code:
             }
             
         except Exception as e:
+            error_msg = f"Error in generate_with_ai: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             return {
                 'success': False,
-                'error': str(e)
+                'error': error_msg,
+                'traceback': traceback.format_exc()
             }
     
     def generate_api_client(self, api_description: str, base_url: str, endpoints: List[Dict]) -> Dict[str, Any]:

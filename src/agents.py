@@ -425,7 +425,7 @@ def create_code_generation_agent() -> AgentExecutor:
     code_generator = CodeGenerationTool()
     code_analyzer = CodeAnalysisTool()
     
-    # Wrapper functions to ensure consistent return types
+    # Wrapper functions to ensure consistent return types and error logging
     def wrap_tool(func):
         def wrapper(*args, **kwargs):
             try:
@@ -434,9 +434,14 @@ def create_code_generation_agent() -> AgentExecutor:
                     if result['success']:
                         return str(result.get('result', result.get('explanation', 'Success'))) if 'result' in result or 'explanation' in result else 'Success'
                     else:
+                        error_msg = f"Error in {func.__name__}: {result.get('error', 'Unknown error')}"
+                        print(f"\n[ERROR] {error_msg}")
                         return f"Error: {result.get('error', 'Unknown error')}"
                 return str(result) if result is not None else 'No output'
             except Exception as e:
+                import traceback
+                error_msg = f"Exception in {func.__name__}: {str(e)}\n{traceback.format_exc()}"
+                print(f"\n[EXCEPTION] {error_msg}")
                 return f"Error executing tool: {str(e)}"
         return wrapper
     
@@ -529,18 +534,28 @@ class MultiAgentSystem:
     def _initialize_agents(self):
         """Initialize different types of agents."""
         try:
+            print("\n[INFO] Initializing agents...")
             # Research agent
+            print("[INFO] Creating research agent...")
             self.agents['research'] = create_research_agent(self.qa_system)
+            print("[SUCCESS] Research agent initialized")
             
             # Code generation agent
+            print("[INFO] Creating code generation agent...")
             self.agents['code_generation'] = create_code_generation_agent()
+            print("[SUCCESS] Code generation agent initialized")
             
             # Add more specialized agents here as needed
             # self.agents['data_analysis'] = create_data_analysis_agent()
             # self.agents['code_review'] = create_code_review_agent()
             
+            print(f"[SUCCESS] All agents initialized: {list(self.agents.keys())}")
+            
         except Exception as e:
-            print(f"Error initializing agents: {str(e)}")
+            import traceback
+            error_msg = f"Error initializing agents: {str(e)}\n{traceback.format_exc()}"
+            print(f"\n[ERROR] {error_msg}")
+            raise
     
     def route_query(self, query: str) -> str:
         """Route query to the most appropriate agent."""
@@ -565,17 +580,24 @@ class MultiAgentSystem:
     
     def process_query(self, query: str, agent_type: Optional[str] = None) -> Dict[str, Any]:
         """Process a query using the appropriate agent."""
-        if agent_type is None:
-            agent_type = self.route_query(query)
-        
-        if agent_type not in self.agents:
-            return {
-                "error": f"Agent type '{agent_type}' not available",
-                "available_agents": list(self.agents.keys())
-            }
-        
         try:
+            print(f"\n[INFO] Processing query: {query[:100]}...")
+            
+            if agent_type is None:
+                print(f"[INFO] No agent specified, routing query...")
+                agent_type = self.route_query(query)
+            print(f"[INFO] Using agent: {agent_type}")
+            
+            if agent_type not in self.agents:
+                error_msg = f"Agent type '{agent_type}' not available. Available agents: {list(self.agents.keys())}"
+                print(f"[ERROR] {error_msg}")
+                return {
+                    "error": error_msg,
+                    "available_agents": list(self.agents.keys())
+                }
+            
             agent = self.agents[agent_type]
+            print(f"[INFO] Invoking agent with query...")
             result = agent.invoke({"input": query})
             
             # Handle different result formats
@@ -584,6 +606,7 @@ class MultiAgentSystem:
             else:
                 result_output = result
                 
+            print(f"[SUCCESS] Query processed successfully by {agent_type} agent")
             return {
                 "agent_used": agent_type,
                 "result": result_output,
@@ -591,7 +614,11 @@ class MultiAgentSystem:
             }
             
         except Exception as e:
+            import traceback
+            error_msg = f"Error processing query with {agent_type} agent: {str(e)}\nQuery: {query}\n{traceback.format_exc()}"
+            print(f"\n[ERROR] {error_msg}")
             return {
-                "error": f"Error processing query with {agent_type} agent: {str(e)}",
-                "query": query
+                "error": f"Error processing query: {str(e)}",
+                "query": query,
+                "agent_used": agent_type
             }

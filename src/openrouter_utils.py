@@ -3,8 +3,9 @@ Utilities for working with OpenRouter API.
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
 from langchain_community.chat_models import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage
 
 
 def get_openrouter_llm(
@@ -25,15 +26,24 @@ def get_openrouter_llm(
     Returns:
         Configured ChatOpenAI instance
     """
+    # Get the API key from environment
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY environment variable is not set")
+    
+    # Configure default headers
+    default_headers = {
+        "HTTP-Referer": "http://localhost:8501",  # Your site URL
+        "X-Title": "LangChain App",  # Your app name
+    }
+    
+    # Create the ChatOpenAI instance with the configuration
     return ChatOpenAI(
-        model_name=model_name,
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_key=api_key,
+        model=model_name,
         temperature=temperature,
         max_tokens=max_tokens,
-        headers={
-            "HTTP-Referer": "http://localhost:8501",  # Your site URL
-            "X-Title": "LangChain App",  # Your app name
-        },
+        openai_api_base="https://openrouter.ai/api/v1",
+        extra_headers=default_headers,
         **kwargs
     )

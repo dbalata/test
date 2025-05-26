@@ -419,23 +419,44 @@ def main():
     with action_col1:
         if st.button("🧪 Test Code Generation", use_container_width=True):
             try:
+                print("\n[INFO] Initializing code generation agent...")
                 code_agent = create_code_generation_agent()
+                print("[INFO] Agent initialized. Sending request...")
                 result = code_agent.invoke({"input": "Create a simple Python function to calculate fibonacci numbers"})
+                print("[INFO] Request completed successfully")
                 st.code(result)
             except Exception as e:
+                import traceback
+                error_msg = f"Test failed: {str(e)}\n{traceback.format_exc()}"
+                print(f"\n[ERROR] {error_msg}")
                 st.error(f"Test failed: {str(e)}")
     
     with action_col2:
         if st.button("📊 Show Templates", use_container_width=True):
             try:
+                print("\n[INFO] Loading available templates...")
                 templates = st.session_state.code_generator.get_available_templates()
                 if templates:
+                    print(f"[INFO] Found {len(templates)} templates")
                     for name, desc in templates.items():
                         st.write(f"**{name}**: {desc}")
                 else:
+                    print("[INFO] No templates available")
                     st.info("No templates available")
             except Exception as e:
+                import traceback
+                error_msg = f"Failed to load templates: {str(e)}\n{traceback.format_exc()}"
+                print(f"\n[ERROR] {error_msg}")
                 st.error(f"Failed to load templates: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        print("\n" + "="*50)
+        print("Starting Streamlit application...")
+        print("="*50 + "\n")
+        main()
+    except Exception as e:
+        import traceback
+        error_msg = f"Fatal error in main: {str(e)}\n{traceback.format_exc()}"
+        print(f"\n[FATAL] {error_msg}")
+        raise
