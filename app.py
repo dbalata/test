@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.schema import HumanMessage, AIMessage
 
@@ -432,9 +433,24 @@ def main():
                 print("\n[INFO] Initializing code generation agent...")
                 code_agent = create_code_generation_agent()
                 print("[INFO] Agent initialized. Sending request...")
-                result = code_agent.invoke({"input": "Create a simple Python function to calculate fibonacci numbers"})
+                
+                # Create a proper input dictionary with the required structure
+                input_data = {
+                    "input": {
+                        "input": "Create a simple Python function to calculate fibonacci numbers"
+                    }
+                }
+                
+                # Invoke the agent with the properly structured input
+                result = code_agent.invoke(input_data)
+                
                 print("[INFO] Request completed successfully")
-                st.code(result)
+                
+                # Display the result based on its type
+                if hasattr(result, 'get') and 'output' in result:
+                    st.code(result['output'])
+                else:
+                    st.code(str(result))
             except Exception as e:
                 import traceback
                 error_msg = f"Test failed: {str(e)}\n{traceback.format_exc()}"

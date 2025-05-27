@@ -1,0 +1,12 @@
+[browser]
+serverAddress = ""
+serverPort = 8501
+
+[server]
+headless = true
+
+[runner]
+fastRerun = true
+
+[client]
+showErrorDetails = false

@@ -5,12 +5,28 @@ Code generation module for AI-assisted code generation.
 from .core import CodeGenerator, CodeGenerationError
 from .models.generation import CodeBlock, GenerationResult, TemplateConfig
 from .parser import CodeParser, ParserError, parse_code
-from .templates import Template, TemplateRegistry, register_template, default_registry
+from .templates import (
+    Template, 
+    TemplateRegistry, 
+    register_template, 
+    default_registry,
+    get_template, 
+    list_templates
+)
+from .api_client import generate_api_client
+from .database import generate_database_schema
+from .testing import generate_testing_suite
+from .refactoring import refactor_code
+from .documentation import generate_documentation
+
+# Import CodeOutputParser from the local output_parser module
+from .output_parser import CodeOutputParser
 
 # Re-export public API
 __all__ = [
     # Main classes
     'CodeGenerator',
+    'CodeOutputParser',
     'Template',
     'TemplateRegistry',
     'CodeParser',
@@ -19,6 +35,15 @@ __all__ = [
     'CodeBlock',
     'GenerationResult',
     'TemplateConfig',
+    
+    # Functions
+    'generate_api_client',
+    'generate_database_schema',
+    'generate_testing_suite',
+    'refactor_code',
+    'generate_documentation',
+    'get_template',
+    'list_templates',
     
     # Functions
     'parse_code',
