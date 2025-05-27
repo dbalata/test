@@ -128,7 +128,7 @@ class LLMSettings(BaseSettings):
         min_length=1,
         description="API key for the LLM provider"
     )
-    base_url: Optional[HttpUrl] = Field(
+    base_url: str = Field(
         "https://openrouter.ai/api/v1",
         description="Base URL for the LLM API"
     )
@@ -143,9 +143,20 @@ class LLMSettings(BaseSettings):
     )
     
     @field_serializer('base_url')
-    def serialize_base_url(self, url: Optional[HttpUrl]) -> Optional[str]:
-        return str(url) if url else None
+    def serialize_base_url(self, url: Optional[Union[str, HttpUrl]]) -> Optional[str]:
+        if url is None:
+            return None
+        return str(url)
     
+    @field_validator('base_url', mode='before')
+    @classmethod
+    def validate_base_url(cls, v):
+        if v is None:
+            return "https://openrouter.ai/api/v1"
+        if isinstance(v, HttpUrl):
+            return str(v)
+        return v
+        
     @field_validator('api_key', mode='before')
     @classmethod
     def validate_api_key(cls, v: Optional[str], info) -> Optional[str]:

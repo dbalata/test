@@ -10,7 +10,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models import BaseLanguageModel
 from langchain.chains.llm import LLMChain
 from langchain_core.output_parsers import BaseOutputParser
-from .openrouter_utils import get_openrouter_llm
+from .openrouter_utils import get_chat_openai
 import json
 import re
 
@@ -67,8 +67,9 @@ class CodeTemplate:
 class CodeGenerator:
     """Main code generation system with templates and AI assistance."""
     
-    def __init__(self):
-        self.llm = get_openrouter_llm(
+    def __init__(self, llm: Optional[BaseLanguageModel] = None):
+        # Get configured LLM
+        self.llm = llm or get_chat_openai(
             model_name="openai/gpt-3.5-turbo",
             temperature=0.1
         )

@@ -12,6 +12,7 @@ from .database import generate_database_schema
 from .testing import generate_testing_suite
 from .refactoring import refactor_code
 from .documentation import generate_documentation
+from ..openrouter_utils import get_chat_openai
 
 __all__ = [
     'CodeOutputParser',

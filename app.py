@@ -9,7 +9,7 @@ from src.qa_system import QASystem
 from src.agents import create_research_agent, create_code_generation_agent, MultiAgentSystem
 from src.code_generator import CodeGenerator, CodeOutputParser
 from src.utils.logger import setup_logger as setup_logging
-from src.openrouter_utils import get_openrouter_llm
+from src.openrouter_utils import get_chat_openai, OpenRouterClient
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +35,9 @@ def initialize_session_state():
     if 'documents_loaded' not in st.session_state:
         st.session_state.documents_loaded = False
     if 'code_generator' not in st.session_state:
-        st.session_state.code_generator = CodeGenerator()
+        # Initialize the code generator with OpenRouterClient
+        client = get_chat_openai()
+        st.session_state.code_generator = CodeGenerator(llm=client)
         st.session_state.code_parser = CodeOutputParser()
     if 'multi_agent_system' not in st.session_state:
         st.session_state.multi_agent_system = None
@@ -267,10 +269,12 @@ def main():
                         # Create vector store
                         vector_store = processor.create_vector_store()
                         
-                        # Initialize QA system
+                        # Create a new QASystem instance with the processed documents
+                        client = get_chat_openai()
                         st.session_state.qa_system = QASystem(
                             vector_store=vector_store,
-                            memory=st.session_state.memory
+                            memory=st.session_state.memory,
+                            llm=client
                         )
                         
                         # Initialize multi-agent system

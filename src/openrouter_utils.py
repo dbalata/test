@@ -1,86 +1,118 @@
 """
-Utilities for working with OpenRouter API.
+Utilities for working with OpenRouter API using the OpenAI client.
 """
 
+from typing import Optional, Dict, Any, List, Union
+from openai import OpenAI
 import os
-import json
-from typing import Dict, Any, Optional, List, Union
-from langchain_community.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
-from langchain.cache import InMemoryCache
-from langchain.globals import set_llm_cache, get_llm_cache
+from dataclasses import dataclass
 
-# Import settings first to avoid circular imports
-from src.config.settings import settings
+# Import settings
+from src.config import settings
 
-# Set up in-memory cache for LLM responses
-cache = get_llm_cache()
-if cache is None:
-    cache = InMemoryCache()
-    set_llm_cache(cache)
+@dataclass
+class OpenAIClientConfig:
+    """Configuration for the OpenAI client with OpenRouter."""
+    api_key: str
+    base_url: str = "https://openrouter.ai/api/v1"
+    default_model: str = "openai/gpt-3.5-turbo"
+    temperature: float = 0.7
+    max_tokens: Optional[int] = None
+    stream: bool = False
+    http_referer: str = "http://localhost:8501"
+    x_title: str = "LangChain QA App"
 
-# Workaround for Pydantic validation issue with ChatOpenAI
-# We'll use a simple dictionary-based configuration instead of direct instantiation
+    def get_extra_headers(self) -> Dict[str, str]:
+        """Get extra headers for OpenRouter."""
+        return {
+            "HTTP-Referer": self.http_referer,
+            "X-Title": self.x_title
+        }
 
-
-def get_openrouter_llm(
-    model_name: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    **kwargs
-) -> ChatOpenAI:
-    """
-    Initialize a ChatOpenAI instance configured for OpenRouter.
+class OpenRouterClient:
+    """A client for interacting with OpenRouter using the OpenAI client."""
     
-    Args:
-        model_name: The model to use (e.g., 'gpt-4-turbo'). 
-                   If not provided, uses the model from settings.
-        temperature: The temperature to use for sampling. Uses settings if not provided.
-        max_tokens: Maximum number of tokens to generate. Uses settings if not provided.
-        **kwargs: Additional arguments to pass to ChatOpenAI
+    def __init__(self, config: Optional[OpenAIClientConfig] = None):
+        """Initialize the OpenRouter client.
         
-    Returns:
-        Configured ChatOpenAI instance
-    """
-    # Use settings values as defaults
-    llm_settings = settings.llm
-    model_name = model_name or llm_settings.model
-    temperature = temperature if temperature is not None else llm_settings.temperature
-    max_tokens = max_tokens or llm_settings.max_tokens
-    
-    # Get API key from settings or environment
-    api_key = llm_settings.api_key or os.environ.get("LANGCHAIN_QA_LLM_API_KEY")
-    
-    if not api_key:
-        raise ValueError(
-            "OpenRouter API key is not configured. "
-            "Please set LANGCHAIN_QA_LLM_API_KEY in your environment or .env file."
+        Args:
+            config: Configuration for the client. If None, uses settings from config.
+        """
+        if config is None:
+            llm_settings = settings.llm
+            self.config = OpenAIClientConfig(
+                api_key=llm_settings.api_key or "dummy_key",
+                base_url=str(llm_settings.base_url) if hasattr(llm_settings, 'base_url') and llm_settings.base_url else "https://openrouter.ai/api/v1",
+                default_model=getattr(llm_settings, 'model', 'openai/gpt-3.5-turbo'),
+                temperature=getattr(llm_settings, 'temperature', 0.7),
+                max_tokens=getattr(llm_settings, 'max_tokens', None)
+            )
+        else:
+            self.config = config
+        
+        self.client = OpenAI(
+            base_url=self.config.base_url,
+            api_key=self.config.api_key
         )
     
-    # Configure default headers for OpenRouter
-    headers = kwargs.pop('headers', {})
-    headers.update({
-        "HTTP-Referer": "http://localhost:8501",  # Your site URL
-        "X-Title": "LangChain App",  # Your app name
-    })
-    
-    # Create a minimal configuration
-    config = {
-        "openai_api_key": api_key,
-        "model_name": model_name,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "openai_api_base": llm_settings.base_url,
-        "extra_headers": headers,
-        "streaming": False,  # Disable streaming to avoid issues
+    def chat_complete(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        stream: Optional[bool] = None,
         **kwargs
+    ) -> Any:
+        """Generate a chat completion using OpenRouter.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            model: The model to use. If None, uses the default from config.
+            temperature: Sampling temperature. If None, uses the default from config.
+            max_tokens: Maximum number of tokens to generate. If None, uses the default from config.
+            stream: Whether to stream the response. If None, uses the default from config.
+            **kwargs: Additional parameters to pass to the API.
+            
+        Returns:
+            The chat completion response.
+        """
+        extra_headers = self.config.get_extra_headers()
+        
+        return self.client.chat.completions.create(
+            model=model or self.config.default_model,
+            messages=messages,
+            temperature=temperature or self.config.temperature,
+            max_tokens=max_tokens or self.config.max_tokens,
+            stream=stream if stream is not None else self.config.stream,
+            extra_headers=extra_headers,
+            **kwargs
+        )
+
+def get_chat_openai(**kwargs) -> OpenRouterClient:
+    """
+    Get a configured OpenRouterClient instance.
+    
+    Args:
+        **kwargs: Additional arguments to pass to the client config
+        
+    Returns:
+        Configured OpenRouterClient instance
+    """
+    # Get settings
+    llm_settings = settings.llm
+    
+    # Create config with defaults from settings, overridden by any kwargs
+    config = {
+        'api_key': llm_settings.api_key or "dummy_key",
+        'base_url': str(llm_settings.base_url) if hasattr(llm_settings, 'base_url') and llm_settings.base_url else "https://openrouter.ai/api/v1",
+        'default_model': getattr(llm_settings, 'model', 'openai/gpt-3.5-turbo'),
+        'temperature': getattr(llm_settings, 'temperature', 0.7),
+        'max_tokens': getattr(llm_settings, 'max_tokens', None),
     }
     
-    # Create the ChatOpenAI instance with minimal configuration
-    chat = ChatOpenAI(**config)
+    # Update with any provided kwargs
+    config.update(kwargs)
     
-    # Ensure the disable_streaming attribute exists
-    if not hasattr(chat, 'disable_streaming'):
-        chat.disable_streaming = False
-        
-    return chat
+    # Create and return the client instance
+    return OpenRouterClient(OpenAIClientConfig(**config))

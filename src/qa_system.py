@@ -2,7 +2,7 @@
 Question-Answering system using Retrieval-Augmented Generation (RAG).
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Callable, Optional, Union
 from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.memory import ConversationBufferWindowMemory
@@ -13,9 +13,10 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 
-# Import our OpenRouter utilities
-from .openrouter_utils import get_openrouter_llm
+from src.openrouter_utils import OpenRouterClient
 
+# Type alias for the language model
+LanguageModel = Union[OpenRouterClient, Callable[[str], str]]
 
 class CustomQAPromptTemplate:
     """Custom prompt templates for different types of questions."""
@@ -63,14 +64,12 @@ class CustomQAPromptTemplate:
 class QASystem:
     """Main Question-Answering system with RAG capabilities."""
     
-    def __init__(self, vector_store: Chroma, memory: ConversationBufferWindowMemory):
+    def __init__(self, vector_store: Chroma, memory: ConversationBufferWindowMemory, llm: Optional[LanguageModel] = None):
         self.vector_store = vector_store
         self.memory = memory
-        self.llm = get_openrouter_llm(
-            model_name="openai/gpt-3.5-turbo",
-            temperature=0.1,
-            max_tokens=1000
-        )
+        
+        # Get configured LLM
+        self.llm = llm or get_chat_openai()
         
         # Create retriever
         self.retriever = vector_store.as_retriever(

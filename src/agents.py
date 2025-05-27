@@ -12,7 +12,7 @@ from langchain_core.tools import BaseToolkit
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_community.utilities import SerpAPIWrapper
 from langchain_experimental.tools import PythonREPLTool
-from .openrouter_utils import get_openrouter_llm
+from .openrouter_utils import get_chat_openai
 import requests
 import json
 
@@ -379,10 +379,11 @@ def create_research_agent(qa_system=None) -> AgentExecutor:
             )
         ])
     
-    # Create the agent
-    llm = get_openrouter_llm(
-        model_name="openai/gpt-3.5-turbo",
-        temperature=0.2
+    # Get configured LLM
+    llm = get_chat_openai(
+        model_name="openai/gpt-4-turbo-preview",
+        temperature=0.2,
+        max_tokens=1500
     )
     
     # Define the agent prompt
@@ -455,7 +456,7 @@ def create_code_generation_agent() -> AgentExecutor:
             except Exception as e:
                 import traceback
                 error_msg = f"Exception in {func.__name__}: {str(e)}\n{traceback.format_exc()}"
-                print(f"\n[EXCEPTION] {error_msg}")
+                print(f"\n[ERROR] {error_msg}")
                 return f"Error executing tool: {str(e)}"
         return wrapper
     
@@ -487,9 +488,10 @@ def create_code_generation_agent() -> AgentExecutor:
         )
     ]
     
-    llm = get_openrouter_llm(
-        model_name="openai/gpt-3.5-turbo",
-        temperature=0.1
+    llm = get_chat_openai(
+        model_name="openai/gpt-4-turbo-preview",
+        temperature=0.1,
+        max_tokens=2000
     )
     
     agent_prompt = PromptTemplate.from_template("""

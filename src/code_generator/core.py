@@ -2,7 +2,7 @@
 Core code generation functionality.
 """
 
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Callable, Type, TypeVar
 from langchain_core.prompts import PromptTemplate
 from langchain_core.language_models import BaseLanguageModel
 from langchain.chains.llm import LLMChain
@@ -14,7 +14,10 @@ from .database import generate_database_schema
 from .testing import generate_testing_suite
 from .refactoring import refactor_code
 from .documentation import generate_documentation
-from ..openrouter_utils import get_openrouter_llm
+from src.openrouter_utils import OpenRouterClient
+
+# Type alias for the language model
+LanguageModel = Union[OpenRouterClient, Callable]  # Accept either OpenRouterClient or callable
 
 
 class CodeGenerator:
@@ -22,17 +25,14 @@ class CodeGenerator:
     Main code generation system with templates and AI assistance.
     """
     
-    def __init__(self, llm: Optional[BaseLanguageModel] = None):
+    def __init__(self, llm: Optional[LanguageModel] = None):
         """
         Initialize the code generator.
         
         Args:
             llm: Optional language model instance. If not provided, a default will be used.
         """
-        self.llm = llm or get_openrouter_llm(
-            model_name="openai/gpt-3.5-turbo",
-            temperature=0.1
-        )
+        self.llm = llm or get_chat_openai()
         self.parser = CodeOutputParser()
         self._setup_prompts()
     
