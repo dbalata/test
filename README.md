@@ -315,10 +315,6 @@ Contributions are welcome! Here are some ways you can contribute:
 - **BeautifulSoup**: Web scraping capabilities
 - **PyPDF2**: PDF document processing
 
-## License
-
-This project is licensed under the MIT License. Please ensure compliance with the terms of service of any third-party APIs and services used in the application.
-
 ---
 
 **Built with ❤️ using LangChain and modern AI technologies**
