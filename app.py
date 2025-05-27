@@ -7,12 +7,17 @@ from langchain.schema import HumanMessage, AIMessage
 from src.document_processor import DocumentProcessor
 from src.qa_system import QASystem
 from src.agents import create_research_agent, create_code_generation_agent, MultiAgentSystem
-from src.code_generator import CodeGenerator
-from src.utils import setup_logging
+from src.code_generator import CodeGenerator, CodeOutputParser
+from src.utils.logger import setup_logger as setup_logging
 from src.openrouter_utils import get_openrouter_llm
 
 # Load environment variables
 load_dotenv()
+
+# Debug: Print loaded environment variables
+print("Environment variables loaded:")
+for var in ["LANGCHAIN_QA_LLM_API_KEY", "LANGCHAIN_QA_LLM_BASE_URL", "LANGCHAIN_QA_LLM_MODEL"]:
+    print(f"{var}: {'*' * 8 if var.endswith('_KEY') else os.getenv(var, 'Not set')}")
 
 # Setup logging
 logger = setup_logging()
@@ -31,6 +36,7 @@ def initialize_session_state():
         st.session_state.documents_loaded = False
     if 'code_generator' not in st.session_state:
         st.session_state.code_generator = CodeGenerator()
+        st.session_state.code_parser = CodeOutputParser()
     if 'multi_agent_system' not in st.session_state:
         st.session_state.multi_agent_system = None
 

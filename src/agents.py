@@ -16,8 +16,17 @@ from .openrouter_utils import get_openrouter_llm
 import requests
 import json
 
-# Import the new code generator
-from .code_generator import CodeGenerator
+# Import the code generator components
+from .code_generator import (
+    CodeGenerator,
+    generate_api_client,
+    generate_database_schema,
+    generate_testing_suite,
+    refactor_code,
+    generate_documentation,
+    get_template,
+    list_templates
+)
 
 
 class WebSearchTool:
@@ -232,80 +241,85 @@ class CodeGenerationTool:
     def generate_from_template(self, template_info: str) -> str:
         """Generate code using predefined templates."""
         try:
-            # Parse template info - expected format: "template_name:param1=value1,param2=value2"
-            if ":" not in template_info:
-                return f"Available templates: {', '.join(self.generator.get_available_templates().keys())}"
-            
-            template_name, params_str = template_info.split(":", 1)
-            
-            # Parse parameters
-            params = {}
-            if params_str.strip():
-                for param in params_str.split(","):
-                    if "=" in param:
-                        key, value = param.split("=", 1)
-                        params[key.strip()] = value.strip()
-            
-            result = self.generator.generate_from_template(template_name.strip(), **params)
-            
-            if result['success']:
-                return f"Generated code using {template_name} template:\n\n```\n{result['code']}\n```"
+            # Parse template info (format: "template_name:param1=value1,param2=value2")
+            if ':' in template_info:
+                template_name, params_str = template_info.split(':', 1)
+                params = dict(pair.split('=') for pair in params_str.split(','))
             else:
-                return f"Error: {result['error']}"
-                
+                template_name = template_info
+                params = {}
+            
+            result = self.generator.generate_from_template(template_name, **params)
+            return f"Generated code using template '{template_name}':\n\n{result}"
         except Exception as e:
-            return f"Error in template generation: {str(e)}"
+            return f"Error generating from template: {str(e)}"
     
     def generate_api_client(self, api_spec: str) -> str:
         """Generate API client code."""
         try:
-            # Parse API specification
-            lines = api_spec.split('\n')
+            # Parse API spec (format: "description\nURL: base_url\nMETHOD /endpoint1\nMETHOD /endpoint2")
+            lines = [line.strip() for line in api_spec.split('\n') if line.strip()]
+            if not lines:
+                return "Error: Empty API specification"
+                
             description = lines[0] if lines else "API Client"
-            base_url = "https://api.example.com"
+            base_url = ""
             endpoints = []
             
-            # Simple parsing - in production would use proper API spec parser
             for line in lines[1:]:
-                if line.strip().startswith("URL:"):
-                    base_url = line.split(":", 1)[1].strip()
-                elif line.strip().startswith("GET") or line.strip().startswith("POST"):
-                    parts = line.strip().split()
+                if line.lower().startswith('url:'):
+                    base_url = line[4:].strip()
+                else:
+                    # Parse endpoint (e.g., "GET /users")
+                    parts = line.split()
                     if len(parts) >= 2:
+                        method = parts[0].upper()
+                        path = parts[1]
                         endpoints.append({
-                            "method": parts[0],
-                            "path": parts[1],
-                            "description": " ".join(parts[2:]) if len(parts) > 2 else ""
+                            'method': method,
+                            'path': path,
+                            'description': ' '.join(parts[2:]) if len(parts) > 2 else ''
                         })
             
+            if not base_url:
+                return "Error: No base URL specified. Use 'URL: base_url' format."
+                
             result = self.generator.generate_api_client(description, base_url, endpoints)
-            
-            if result['success']:
-                output = f"Generated API client for: {description}\n\n"
-                output += result['client_code']['explanation'] + "\n\n"
-                
-                for block in result['client_code']['code_blocks']:
-                    output += f"```{block['language']}\n{block['code']}\n```\n\n"
-                
-                return output
-            else:
-                return f"Error generating API client: {result['error']}"
-                
+            return self._format_generation_result(result)
         except Exception as e:
-            return f"Error in API client generation: {str(e)}"
+            return f"Error generating API client: {str(e)}"
     
     def explain_code(self, code: str) -> str:
         """Explain existing code."""
         try:
-            result = self.generator.explain_code(code, detail_level="detailed")
-            
-            if result['success']:
-                return f"Code Explanation:\n\n{result['explanation']}"
-            else:
-                return f"Error explaining code: {result['error']}"
-                
+            result = self.generator.explain_code(code)
+            return self._format_generation_result(result)
         except Exception as e:
-            return f"Error in code explanation: {str(e)}"
+            return f"Error explaining code: {str(e)}"
+    
+    def _format_generation_result(self, result: Dict[str, Any]) -> str:
+        """Format the generation result for display."""
+        if not isinstance(result, dict):
+            return str(result)
+            
+        output = []
+        
+        if 'explanation' in result:
+            output.append(result['explanation'].strip())
+        
+        if 'code_blocks' in result and result['code_blocks']:
+            for i, block in enumerate(result['code_blocks'], 1):
+                lang = block.get('language', '')
+                code = block.get('code', '')
+                if code:
+                    output.append(f"```{lang}\n{code}\n```")
+        
+        if 'dependencies' in result and result['dependencies']:
+            output.append("\nDependencies:")
+            for dep in result['dependencies']:
+                output.append(f"- {dep}")
+        
+        return '\n\n'.join(output) if output else "No output generated"
 
 
 def create_research_agent(qa_system=None) -> AgentExecutor:

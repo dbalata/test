@@ -243,11 +243,14 @@ class PerformanceMonitor:
 def validate_environment() -> Dict[str, bool]:
     """Validate that required environment variables are set."""
     required_vars = [
-        "OPENAI_API_KEY"
+        "LLM_API_KEY"  # OpenRouter API key
     ]
     
     optional_vars = [
-        "SERPAPI_API_KEY"
+        "SERPAPI_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_PROVIDER",
+        "LLM_MODEL"
     ]
     
     validation = {}
@@ -263,7 +266,7 @@ def validate_environment() -> Dict[str, bool]:
         validation[var] = {
             "required": False,
             "present": bool(os.getenv(var)),
-            "valid": bool(os.getenv(var) and len(os.getenv(var)) > 10)
+            "valid": True  # These are optional, so always valid if present
         }
     
     return validation

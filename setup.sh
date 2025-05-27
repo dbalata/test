@@ -38,12 +38,20 @@ mkdir -p chroma_db
 # Check for .env file
 if [ ! -f ".env" ]; then
     echo "⚠️  .env file not found. Creating template..."
-    cat > .env << EOF
-OPENAI_API_KEY=your_openai_api_key_here
-SERPAPI_API_KEY=your_serpapi_key_here
-# Add your API keys above
+    cat > .env << 'EOF'
+# Required
+LLM_API_KEY=your_openrouter_api_key_here
+
+# Optional - override defaults if needed
+# LLM_BASE_URL=https://openrouter.ai/api/v1
+# LLM_PROVIDER=openrouter
+# LLM_MODEL=openai/gpt-4-turbo-preview
+
+# Optional - for enhanced web search
+# SERPAPI_API_KEY=your_serpapi_key_here
 EOF
-    echo "📝 Please edit .env file with your API keys"
+    echo "📝 Please edit .env file with your OpenRouter API key"
+    echo "   Get your API key from: https://openrouter.ai/keys"
 fi
 
 # Run basic validation

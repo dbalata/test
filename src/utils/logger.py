@@ -28,9 +28,16 @@ def setup_logger(
     Returns:
         Configured logger instance
     """
+    # Default log level
+    default_log_level = "INFO"
+    
     # Get log level from settings if not provided
     if log_level is None:
-        log_level = settings.app.log_level.upper()
+        try:
+            log_level = getattr(settings, 'app', {}).get('log_level', default_log_level).upper()
+        except Exception as e:
+            print(f"Warning: Could not get log level from settings: {e}")
+            log_level = default_log_level
     
     # Create logger
     logger = logging.getLogger(name)

@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, Type, List
 
 from src.ui.base_component import BaseComponent
 from src.ui.components.code_generation import CodeGenerationComponent
-from src.code_generator import CodeGenerator
+from src.code_generator import CodeGenerator, CodeOutputParser
 from src.config.settings import settings
 
 class CodeGenerationApp:
@@ -19,6 +19,8 @@ class CodeGenerationApp:
         """Initialize the Streamlit session state."""
         if 'code_generator' not in st.session_state:
             st.session_state.code_generator = CodeGenerator()
+        if 'code_parser' not in st.session_state:
+            st.session_state.code_parser = CodeOutputParser()
     
     def _initialize_components(self) -> None:
         """Initialize UI components."""

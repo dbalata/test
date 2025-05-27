@@ -14,6 +14,7 @@ import traceback
 
 import streamlit as st
 from src.config.settings import settings
+from src.code_generator import CodeOutputParser
 
 # Type aliases for better code readability
 CodeBlock = Dict[str, str]
@@ -92,6 +93,7 @@ class CodeGenerationComponent:
             raise ValueError("code_generator cannot be None")
             
         self.code_generator = code_generator
+        self.code_parser = CodeOutputParser()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     def render(self) -> None:
@@ -153,8 +155,8 @@ class CodeGenerationComponent:
         """Handle the AI description generation logic.
         
         This method processes the user's description, sends it to the AI code generator,
-        and handles the response. It validates inputs, processes the result, and displays
-        the generated code or error messages.
+        handles the response, and displays the results. It validates inputs, processes 
+        the result, and displays the generated code or error messages.
         
         Args:
             description: The natural language description of the desired code.
@@ -164,68 +166,34 @@ class CodeGenerationComponent:
         Raises:
             CodeGenerationError: If there's a problem with the generation process.
         """
-        self.logger.info("Starting AI description-based code generation")
-        self.logger.debug(
-            "Generation parameters - Language: %s, Framework: %s",
-            language,
-            framework or 'None'
-        )
-        
-        if not description.strip():
-            error_msg = "Description cannot be empty"
-            self.logger.warning(error_msg)
-            st.error(error_msg)
-            return
+        if not description or not language:
+            raise CodeGenerationError("Description and language are required")
             
-        if not language.strip():
-            error_msg = "Programming language must be specified"
-            self.logger.warning(error_msg)
-            st.error(error_msg)
-            return
-        
         try:
-            # Normalize framework to None if empty string
-            framework = framework.strip() if framework else None
-            
             with st.spinner("Generating code..."):
-                self.logger.info("Initiating code generation with AI...")
+                # Call the code generator with the provided parameters
                 raw_result = self.code_generator.generate_with_ai(
                     description=description,
                     language=language,
                     framework=framework
                 )
                 
-                self.logger.debug("Raw generation result: %s", 
-                                 json.dumps(raw_result, indent=2, default=str))
+                # Parse the result using the code parser
+                parsed_result = self.code_parser.parse(raw_result)
                 
-                # Process the result
-                try:
-                    result = GenerationResult.from_dict(raw_result)
+                # Process the parsed result
+                if parsed_result.get('error'):
+                    st.error(f"Error generating code: {parsed_result['error']}")
+                    return
+                
+                # Display the parsed result
+                self._display_generation_result(parsed_result)
                     
-                    if not result.success:
-                        error_msg = result.error or "Unknown error occurred during code generation"
-                        self.logger.error("Generation failed: %s", error_msg)
-                        st.error(f"Error: {error_msg}")
-                        return
-                        
-                    self.logger.info("Code generation completed successfully")
-                    self._display_generation_result(result)
-                    
-                except Exception as parse_error:
-                    self.logger.error(
-                        "Error processing generation result: %s",
-                        str(parse_error),
-                        exc_info=True
-                    )
-                    # Fall back to displaying raw result if processing fails
-                    self._display_raw_result(raw_result)
-        
         except Exception as e:
-            error_msg = f"Failed to generate code: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            st.error("An error occurred during code generation.")
-            if settings.DEBUG:
-                st.exception(e)
+            error_msg = f"An unexpected error occurred: {str(e)}"
+            self.logger.exception(error_msg)
+            st.error(error_msg)
+            raise CodeGenerationError(error_msg) from e
             
             # Provide more user-friendly error for common cases
             if "API key" in str(e):
@@ -256,23 +224,11 @@ class CodeGenerationComponent:
         Args:
             result: The generation result to display, either as a dictionary or GenerationResult.
         """
-        self.logger.info("Rendering generation result")
-        
-        # Convert to GenerationResult if it's a dict
-        if isinstance(result, dict):
-            try:
-                result = GenerationResult.from_dict(result)
-            except Exception as e:
-                self.logger.error("Error converting dict to GenerationResult: %s", str(e))
-                self._display_raw_result(result)
-                return
-        
-        if not result or not result.code_blocks:
-            self.logger.warning("No code blocks found in the result")
-            st.warning("No code was generated. Please try again with a different description.")
-            return
-            
         try:
+            # Convert to GenerationResult if it's a dict
+            if isinstance(result, dict):
+                result = GenerationResult.from_dict(result)
+            
             # Display success message
             st.success("✅ Code generated successfully!")
             
@@ -282,33 +238,87 @@ class CodeGenerationComponent:
                     st.markdown(result.explanation)
             
             # Display code blocks with tabs for multiple files
-            if len(result.code_blocks) > 1:
-                tabs = st.tabs([f"File {i+1}" for i in range(len(result.code_blocks))])
-                for i, (tab, block) in enumerate(zip(tabs, result.code_blocks), 1):
-                    with tab:
-                        self._display_code_block(block, f"Generated Code {i}")
-            else:
-                self._display_code_block(result.code_blocks[0], "Generated Code")
+            if hasattr(result, 'code_blocks') and result.code_blocks:
+                if len(result.code_blocks) > 1:
+                    tabs = st.tabs([f"File {i+1}" for i in range(len(result.code_blocks))])
+                    for i, (tab, block) in enumerate(zip(tabs, result.code_blocks), 1):
+                        with tab:
+                            self._display_code_block(block, f"Generated Code {i}")
+                else:
+                    self._display_code_block(result.code_blocks[0], "Generated Code")
             
             # Display dependencies if available
-            if result.dependencies:
+            if hasattr(result, 'dependencies') and result.dependencies:
                 with st.expander("📦 Dependencies", expanded=False):
                     st.write("The following dependencies are required:")
-                    for dep in result.dependencies:
-                        st.code(dep, language='bash' if 'pip install' in str(dep) else 'text')
+                    if isinstance(result.dependencies, list):
+                        for dep in result.dependencies:
+                            st.code(dep, language='bash' if 'pip install' in str(dep) else 'text')
+                    elif isinstance(result.dependencies, dict):
+                        for name, version in result.dependencies.items():
+                            st.code(f"{name}{'@' + str(version) if version else ''}", language='text')
             
             # Add copy to clipboard functionality
-            if len(result.code_blocks) == 1 and 'code' in result.code_blocks[0]:
-                code = result.code_blocks[0]['code']
-                st.download_button(
-                    label="📋 Download Code",
-                    data=code,
-                    file_name=f"generated_code.{result.code_blocks[0].get('language', 'txt')}",
-                    mime="text/plain"
-                )
-                
+            if hasattr(result, 'code_blocks') and result.code_blocks:
+                if st.button("📋 Copy to Clipboard"):
+                    all_code = "\n\n".join(
+                        f"# {block.get('filename', f'Code Block {i+1}')}\n{block.get('code', '')}"
+                        for i, block in enumerate(result.code_blocks)
+                        if isinstance(block, dict)
+                    )
+                    try:
+                        import pyperclip
+                        pyperclip.copy(all_code)
+                        st.success("Code copied to clipboard!")
+                    except ImportError:
+                        st.warning("pyperclip not installed. Install with 'pip install pyperclip' for copy functionality.")
+            
+            # Add download functionality
+            if hasattr(result, 'code_blocks') and result.code_blocks:
+                if len(result.code_blocks) == 1 and isinstance(result.code_blocks[0], dict) and 'code' in result.code_blocks[0]:
+                    # Single file download
+                    code = result.code_blocks[0]['code']
+                    filename = result.code_blocks[0].get('filename', 'generated_code.py')
+                    st.download_button(
+                        label="💾 Download Code",
+                        data=code,
+                        file_name=filename,
+                        mime="text/plain"
+                    )
+                elif len(result.code_blocks) > 1:
+                    # Multiple files - create a zip
+                    try:
+                        import io
+                        import zipfile
+                        
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                            for i, block in enumerate(block for block in result.code_blocks if isinstance(block, dict) and 'code' in block):
+                                filename = block.get('filename', f'code_{i+1}.py')
+                                zip_file.writestr(filename, block['code'])
+                        
+                        st.download_button(
+                            label="💾 Download All Files",
+                            data=zip_buffer.getvalue(),
+                            file_name="generated_code.zip",
+                            mime="application/zip"
+                        )
+                    except Exception as zip_error:
+                        self.logger.error(f"Error creating zip file: {str(zip_error)}")
+                        st.warning("Could not create zip file. Please try downloading individual files.")
+            
+            # Display any additional metadata
+            if hasattr(result, 'metadata') and result.metadata:
+                with st.expander("🔍 Additional Metadata"):
+                    st.json(result.metadata)
+            
+            # Display raw result in debug mode
+            if settings.DEBUG and hasattr(result, 'raw_result') and result.raw_result is not None:
+                with st.expander("🐛 Debug: Raw Result"):
+                    st.json(result.raw_result)
+                    
         except Exception as e:
-            error_msg = f"Error displaying result: {str(e)}"
+            error_msg = f"Error displaying generation result: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             st.error("An error occurred while displaying the result.")
             if settings.DEBUG:
@@ -320,6 +330,10 @@ class CodeGenerationComponent:
         Args:
             block: Dictionary containing 'code' and optionally 'language' and 'filename'
             title: Title to display above the code block
+            
+        Note:
+            Generated files should not exceed 200 lines to maintain readability and maintainability.
+            Consider breaking down larger files into smaller, focused modules.
         """
         if not block or 'code' not in block:
             self.logger.warning("Invalid code block format")
@@ -328,6 +342,15 @@ class CodeGenerationComponent:
         language = block.get('language', '').lower()
         filename = block.get('filename', '')
         code = block['code']
+        
+        # Check code length
+        line_count = len(code.splitlines())
+        if line_count > 200:
+            st.warning(
+                f"⚠️ This generated code is {line_count} lines long. "
+                "For better maintainability, consider breaking it down into smaller, "
+                "focused modules of 200 lines or less."
+            )
         
         # Display filename if available
         if filename:
@@ -362,16 +385,94 @@ class CodeGenerationComponent:
     
     def _render_template_mode(self) -> None:
         """Render UI for template-based code generation."""
-        templates = self.code_generator.get_available_templates()
-        template_name = st.selectbox("Select Template", list(templates.keys()))
-        
-        if template_name:
-            st.write(f"**Description:** {templates[template_name]}")
+        # Get available templates from the code generator
+        try:
+            templates = self.code_generator.get_available_templates()
             
-            if template_name == "python_class":
-                self._render_python_class_template()
-            elif template_name == "flask_api":
-                self._render_flask_api_template()
+            if not templates:
+                st.warning("No templates available. Please check your configuration.")
+                return
+                
+            # Create a user-friendly display name for each template
+            template_options = [
+                f"{name}: {info.get('description', 'No description')}" 
+                for name, info in templates.items()
+            ]
+            
+            selected_template = st.selectbox(
+                "Select a template",
+                options=template_options,
+                format_func=lambda x: x.split(":")[0]  # Show only the template name in the dropdown
+            )
+            
+            # Extract the template name from the selected option
+            template_name = selected_template.split(":")[0].strip()
+            template_info = templates.get(template_name, {})
+            
+            # Display template description
+            st.markdown(f"**Description:** {template_info.get('description', 'No description available')}")
+            
+            # Get template parameters
+            params = {}
+            for param_name, param_info in template_info.get('parameters', {}).items():
+                param_type = param_info.get('type', 'str')
+                param_default = param_info.get('default', '')
+                param_description = param_info.get('description', '')
+                
+                # Create appropriate input based on parameter type
+                if param_type == 'str':
+                    params[param_name] = st.text_input(
+                        f"{param_name} ({param_type})",
+                        value=param_default,
+                        help=param_description
+                    )
+                elif param_type == 'int':
+                    params[param_name] = st.number_input(
+                        f"{param_name} ({param_type})",
+                        value=int(param_default) if param_default else 0,
+                        help=param_description
+                    )
+                elif param_type == 'bool':
+                    params[param_name] = st.checkbox(
+                        f"{param_name} ({param_type})",
+                        value=param_default.lower() == 'true' if param_default else False,
+                        help=param_description
+                    )
+                else:
+                    # Default to text input for unknown types
+                    params[param_name] = st.text_input(
+                        f"{param_name} ({param_type})",
+                        value=str(param_default),
+                        help=param_description
+                    )
+            
+            if st.button("Generate Code"):
+                with st.spinner(f"Generating {template_name}..."):
+                    try:
+                        # Generate code from template
+                        generated_code = self.code_generator.generate_from_template(
+                            template_name,
+                            **params
+                        )
+                        
+                        # Parse the result using the code parser
+                        parsed_result = self.code_parser.parse(generated_code)
+                        
+                        # Process the parsed result
+                        if parsed_result.get('error'):
+                            st.error(f"Error generating code: {parsed_result['error']}")
+                        else:
+                            self._display_generation_result(parsed_result)
+                            
+                    except Exception as e:
+                        error_msg = f"Error generating code from template: {str(e)}"
+                        self.logger.exception(error_msg)
+                        st.error(error_msg)
+                        
+        except Exception as e:
+            error_msg = f"Failed to load templates: {str(e)}"
+            self.logger.exception(error_msg)
+            st.error(error_msg)
     
     def _render_python_class_template(self) -> None:
         """Render UI for Python class template."""
@@ -443,38 +544,52 @@ class CodeGenerationComponent:
             base_url: Base URL for the API.
             endpoints_text: Text containing API endpoints (one per line).
         """
+        if not api_description or not base_url or not endpoints_text:
+            st.error("API description, base URL, and at least one endpoint are required")
+            return
+            
         try:
-            # Parse endpoints
+            # Parse endpoints from text
             endpoints = []
-            for line in endpoints_text.split('\n'):
-                if line.strip() and ' ' in line:
-                    parts = line.split(' ', 2)
+            for line in endpoints_text.strip().split('\n'):
+                line = line.strip()
+                if line:  # Skip empty lines
+                    parts = line.split()
                     if len(parts) >= 2:
+                        method = parts[0].upper()
+                        path = parts[1]
+                        description = ' '.join(parts[2:]) if len(parts) > 2 else ''
                         endpoints.append({
-                            'method': parts[0],
-                            'path': parts[1],
-                            'description': parts[2] if len(parts) > 2 else ''
+                            'method': method,
+                            'path': path,
+                            'description': description
                         })
             
-            result = self.code_generator.generate_api_client(
-                api_description, base_url, endpoints
-            )
-            
-            if result['success']:
-                st.success("API client generated!")
-                self._display_generation_result(result['client_code'])
-            else:
-                st.error(f"Error: {result['error']}")
+            if not endpoints:
+                st.error("No valid endpoints found. Format: 'METHOD /path [description]'")
+                return
+                
+            with st.spinner("Generating API client..."):
+                # Generate the API client
+                generated_code = self.code_generator.generate_api_client(
+                    api_description=api_description,
+                    base_url=base_url,
+                    endpoints=endpoints
+                )
+                
+                # Parse the result using the code parser
+                parsed_result = self.code_parser.parse(generated_code)
+                
+                # Process the parsed result
+                if parsed_result.get('error'):
+                    st.error(f"Error generating API client: {parsed_result['error']}")
+                else:
+                    self._display_generation_result(parsed_result)
+                    
         except Exception as e:
-            st.error(f"API client generation failed: {str(e)}")
-    
-    def _render_explain_code_mode(self) -> None:
-        """Render UI for code explanation."""
-        code_input = st.text_area(
-            "Paste your code here:",
-            placeholder="def fibonacci(n):\n    if n <= 1:\n        return n\n    return fibonacci(n-1) + fibonacci(n-2)"
-        )
-        detail_level = st.selectbox("Detail Level", ["brief", "detailed", "expert"])
+            error_msg = f"An error occurred while generating the API client: {str(e)}"
+            self.logger.exception(error_msg)
+            st.error(error_msg)
         
         if st.button("Explain Code"):
             if code_input:
@@ -490,11 +605,25 @@ class CodeGenerationComponent:
             code_input: The code to explain.
             detail_level: The level of detail for the explanation.
         """
+        if not code_input.strip():
+            st.warning("Please enter some code to explain.")
+            return
+            
         try:
-            result = self.code_generator.explain_code(code_input, detail_level)
-            if result['success']:
-                self._display_generation_result(result['result'])
-            else:
-                st.error(f"Error: {result['error']}")
+            with st.spinner("Analyzing code..."):
+                # Generate the explanation
+                explanation = self.code_generator.explain_code(code_input, detail_level=detail_level)
+                
+                # Parse the result using the code parser
+                parsed_result = self.code_parser.parse(explanation)
+                
+                # Process the parsed result
+                if parsed_result.get('error'):
+                    st.error(f"Error explaining code: {parsed_result['error']}")
+                else:
+                    self._display_generation_result(parsed_result)
+                    
         except Exception as e:
-            st.error(f"Code explanation failed: {str(e)}")
+            error_msg = f"An error occurred while explaining the code: {str(e)}"
+            self.logger.exception(error_msg)
+            st.error(error_msg)
