@@ -1,28 +1,53 @@
 """
-Code generation module with various templates and examples.
-Provides functionality to generate code in multiple programming languages
-with different patterns and frameworks.
+Code generation module for AI-assisted code generation.
 """
 
-from .parser import CodeOutputParser
-from .templates import CodeTemplate, get_template, list_templates
-from .core import CodeGenerator
-from .api_client import generate_api_client
-from .database import generate_database_schema
-from .testing import generate_testing_suite
-from .refactoring import refactor_code
-from .documentation import generate_documentation
-from ..openrouter_utils import get_chat_openai
+from .core import CodeGenerator, CodeGenerationError
+from .models.generation import CodeBlock, GenerationResult, TemplateConfig
+from .parser import CodeParser, ParserError, parse_code
+from .templates import Template, TemplateRegistry, register_template, default_registry
 
+# Re-export public API
 __all__ = [
-    'CodeOutputParser',
-    'CodeTemplate',
+    # Main classes
     'CodeGenerator',
-    'get_template',
-    'list_templates',
-    'generate_api_client',
-    'generate_database_schema',
-    'generate_testing_suite',
-    'refactor_code',
-    'generate_documentation'
+    'Template',
+    'TemplateRegistry',
+    'CodeParser',
+    
+    # Models
+    'CodeBlock',
+    'GenerationResult',
+    'TemplateConfig',
+    
+    # Functions
+    'parse_code',
+    'register_template',
+    'generate_code',
+    
+    # Constants
+    'default_registry',
+    
+    # Exceptions
+    'CodeGenerationError',
+    'ParserError',
 ]
+
+# Initialize default registry with built-in templates
+_default_generator = CodeGenerator()
+
+def generate_code(description: str, **kwargs):
+    """
+    Generate code using the default code generator.
+    
+    This is a convenience function that uses the default CodeGenerator instance.
+    For more control, create and configure your own CodeGenerator instance.
+    
+    Args:
+        description: Natural language description of the desired code
+        **kwargs: Additional arguments to pass to generate_with_ai
+        
+    Returns:
+        GenerationResult containing the generated code and metadata
+    """
+    return _default_generator.generate_with_ai(description, **kwargs)

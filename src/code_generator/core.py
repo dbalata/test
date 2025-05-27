@@ -2,22 +2,24 @@
 Core code generation functionality.
 """
 
-from typing import Dict, List, Any, Optional, Union, Callable, Type, TypeVar
+from typing import Dict, List, Any, Optional, Union, Type, TypeVar, Callable
+from dataclasses import asdict
+
 from langchain_core.prompts import PromptTemplate
-from langchain_core.language_models import BaseLanguageModel
 from langchain.chains.llm import LLMChain
 
-from .parser import CodeOutputParser
-from .templates import get_template, list_templates
-from .api_client import generate_api_client
-from .database import generate_database_schema
-from .testing import generate_testing_suite
-from .refactoring import refactor_code
-from .documentation import generate_documentation
-from src.openrouter_utils import OpenRouterClient
+from .models.generation import GenerationResult, CodeBlock, TemplateConfig
+from .parser import CodeParser, ParserError
+from .templates import Template, TemplateRegistry, register_template, default_registry
+from ..openrouter_utils import get_chat_openai
 
-# Type alias for the language model
-LanguageModel = Union[OpenRouterClient, Callable]  # Accept either OpenRouterClient or callable
+# Type alias for language model
+LanguageModel = Callable[[str], str]
+
+
+class CodeGenerationError(Exception):
+    """Base exception for code generation errors."""
+    pass
 
 
 class CodeGenerator:
@@ -25,49 +27,55 @@ class CodeGenerator:
     Main code generation system with templates and AI assistance.
     """
     
-    def __init__(self, llm: Optional[LanguageModel] = None):
+    def __init__(
+        self,
+        llm: Optional[LanguageModel] = None,
+        template_registry: Optional[TemplateRegistry] = None,
+        parser: Optional[CodeParser] = None
+    ):
         """
         Initialize the code generator.
         
         Args:
-            llm: Optional language model instance. If not provided, a default will be used.
+            llm: Language model callable that takes a prompt and returns a string response
+            template_registry: Registry for code templates
+            parser: Parser for processing LLM responses
         """
-        self.llm = llm or get_chat_openai()
-        self.parser = CodeOutputParser()
-        self._setup_prompts()
+        self.llm = llm or self._get_default_llm()
+        self.parser = parser or CodeParser()
+        self.templates = template_registry or default_registry
+        self._setup_default_templates()
     
-    def _setup_prompts(self) -> None:
-        """Initialize prompt templates."""
-        self.code_generation_prompt = PromptTemplate(
-            input_variables=["description", "language", "framework"],
-            template="""Generate {language} code for the following task. {framework}
-            
-            Task: {description}
-            
-            Provide:
-            1. A clear explanation of the solution
-            2. Well-commented code
-            3. Any necessary dependencies
-            
-            Format your response with markdown code blocks."""
-        )
-        
-        self.code_explanation_prompt = PromptTemplate(
-            input_variables=["code", "detail_level"],
-            template="""Explain the following code with {detail_level} detail:
-            
-            ```
-            {code}
-            ```
-            
-            Include:
-            1. Purpose and functionality
-            2. Key components and their roles
-            3. Any important algorithms or patterns used"""
-        )
+    def _get_default_llm(self) -> LanguageModel:
+        """Get the default language model."""
+        # This is a simple wrapper that adapts OpenRouterClient to the Callable protocol
+        client = get_chat_openai()
+        return lambda prompt: client.chat_complete([{"role": "user", "content": prompt}])
     
-    def generate_with_ai(self, description: str, language: str = "python", 
-                        framework: str = None) -> Dict[str, Any]:
+    def _setup_default_templates(self) -> None:
+        """Register default templates if not already registered."""
+        if not self.templates.get('python_class'):
+            self.templates.create_template(
+                name='python_class',
+                description='Basic Python class with constructor and methods',
+                template='''class {class_name}:
+    """{description}"""
+    
+    def __init__(self{init_params}):
+        {init_body}
+    
+    {methods}
+''',
+                variables=['class_name', 'description', 'init_params', 'init_body', 'methods']
+            )
+    
+    def generate_with_ai(
+        self,
+        description: str,
+        language: str = "python",
+        framework: Optional[str] = None,
+        **kwargs
+    ) -> GenerationResult:
         """
         Generate code using AI based on natural language description.
         
@@ -75,47 +83,79 @@ class CodeGenerator:
             description: Natural language description of the desired code
             language: Target programming language
             framework: Optional framework (e.g., 'flask', 'django')
+            **kwargs: Additional arguments to pass to the LLM
             
         Returns:
-            Dict containing generated code and metadata
+            GenerationResult containing generated code and metadata
+            
+        Raises:
+            CodeGenerationError: If code generation fails
         """
-        framework_text = f"Use {framework} framework." if framework else ""
-        
-        chain = LLMChain(
-            llm=self.llm,
-            prompt=self.code_generation_prompt
-        )
-        
-        result = chain.run(
-            description=description,
-            language=language,
-            framework=framework_text
-        )
-        
-        return self.parser.parse(result)
+        try:
+            prompt = self._build_code_generation_prompt(description, language, framework)
+            response = self.llm(prompt)
+            return self.parser.parse(response)
+        except Exception as e:
+            raise CodeGenerationError(f"Failed to generate code: {str(e)}")
     
-    def explain_code(self, code: str, detail_level: str = "detailed") -> Dict[str, Any]:
+    def _build_code_generation_prompt(
+        self,
+        description: str,
+        language: str,
+        framework: Optional[str]
+    ) -> str:
+        """Build the prompt for code generation."""
+        framework_text = f" using {framework}" if framework else ""
+        return (
+            f"Generate {language} code{framework_text} for: {description}\n\n"
+            "Provide:\n"
+            "1. A clear explanation of the solution\n"
+            "2. Well-commented code in markdown code blocks\n"
+            "3. Any necessary dependencies\n"
+            "4. Usage examples if applicable"
+        )
+    
+    def explain_code(
+        self,
+        code: str,
+        detail_level: str = "detailed",
+        **kwargs
+    ) -> GenerationResult:
         """
         Explain existing code with different levels of detail.
         
         Args:
             code: Source code to explain
             detail_level: Level of detail ('brief', 'detailed', 'comprehensive')
+            **kwargs: Additional arguments to pass to the LLM
             
         Returns:
-            Dict containing explanation and metadata
+            GenerationResult containing explanation and metadata
+            
+        Raises:
+            CodeGenerationError: If explanation fails
         """
-        chain = LLMChain(
-            llm=self.llm,
-            prompt=self.code_explanation_prompt
+        try:
+            prompt = self._build_code_explanation_prompt(code, detail_level)
+            response = self.llm(prompt)
+            return self.parser.parse(response)
+        except Exception as e:
+            raise CodeGenerationError(f"Failed to explain code: {str(e)}")
+    
+    def _build_code_explanation_prompt(
+        self,
+        code: str,
+        detail_level: str
+    ) -> str:
+        """Build the prompt for code explanation."""
+        return (
+            f"Explain the following code with {detail_level} detail:\n\n"
+            f"```\n{code}\n```\n\n"
+            "Include:\n"
+            "1. Purpose and functionality\n"
+            "2. Key components and their roles\n"
+            "3. Any important algorithms or patterns used"
         )
-        
-        result = chain.run(
-            code=code,
-            detail_level=detail_level
-        )
-        
-        return self.parser.parse(result)
     
     def get_available_templates(self) -> Dict[str, str]:
         """
@@ -124,9 +164,13 @@ class CodeGenerator:
         Returns:
             Dict mapping template names to descriptions
         """
-        return list_templates()
+        return self.templates.list_templates()
     
-    def generate_from_template(self, template_name: str, **kwargs) -> str:
+    def generate_from_template(
+        self,
+        template_name: str,
+        **kwargs
+    ) -> str:
         """
         Generate code using a predefined template.
         
@@ -140,11 +184,20 @@ class CodeGenerator:
         Raises:
             ValueError: If template not found or required variables missing
         """
-        template = get_template(template_name)
+        template = self.templates.get(template_name)
+        if not template:
+            raise ValueError(f"Template '{template_name}' not found")
         return template.generate(**kwargs)
-        
-    def generate_api_client(self, api_description: str, base_url: str, 
-                          endpoints: List[Dict], **kwargs) -> Dict[str, Any]:
+    
+    # The following methods are stubs that would be implemented in separate modules
+    
+    def generate_api_client(
+        self,
+        api_description: str,
+        base_url: str,
+        endpoints: List[Dict[str, Any]],
+        **kwargs
+    ) -> GenerationResult:
         """
         Generate an API client based on specification.
         
@@ -155,84 +208,97 @@ class CodeGenerator:
             **kwargs: Additional arguments for API client generation
             
         Returns:
-            Dict containing generated client code and metadata
+            GenerationResult containing generated client code and metadata
+        
+        Raises:
+            NotImplementedError: This is a stub for future implementation
         """
-        return generate_api_client(
-            llm=self.llm,
-            api_description=api_description,
-            base_url=base_url,
-            endpoints=endpoints,
-            **kwargs
-        )
+        raise NotImplementedError("API client generation not yet implemented")
     
-    def generate_database_schema(self, requirements: str, 
-                               database_type: str = "postgresql") -> Dict[str, Any]:
+    def generate_database_schema(
+        self,
+        requirements: str,
+        database_type: str = "postgresql",
+        **kwargs
+    ) -> GenerationResult:
         """
         Generate database schema based on requirements.
         
         Args:
             requirements: Natural language description of database requirements
             database_type: Type of database (e.g., 'postgresql', 'mysql')
+            **kwargs: Additional arguments for schema generation
             
         Returns:
-            Dict containing generated schema and metadata
+            GenerationResult containing generated schema and metadata
+            
+        Raises:
+            NotImplementedError: This is a stub for future implementation
         """
-        return generate_database_schema(
-            llm=self.llm,
-            requirements=requirements,
-            database_type=database_type
-        )
+        raise NotImplementedError("Database schema generation not yet implemented")
     
-    def generate_testing_suite(self, code_to_test: str, 
-                             testing_framework: str = "pytest") -> Dict[str, Any]:
+    def generate_testing_suite(
+        self,
+        code_to_test: str,
+        testing_framework: str = "pytest",
+        **kwargs
+    ) -> GenerationResult:
         """
         Generate test cases for the given code.
         
         Args:
             code_to_test: Source code to generate tests for
             testing_framework: Testing framework to use
+            **kwargs: Additional arguments for test generation
             
         Returns:
-            Dict containing generated tests and metadata
+            GenerationResult containing generated tests and metadata
+            
+        Raises:
+            NotImplementedError: This is a stub for future implementation
         """
-        return generate_testing_suite(
-            llm=self.llm,
-            code_to_test=code_to_test,
-            testing_framework=testing_framework
-        )
+        raise NotImplementedError("Test generation not yet implemented")
     
-    def refactor_code(self, original_code: str, 
-                     refactoring_goals: str) -> Dict[str, Any]:
+    def refactor_code(
+        self,
+        original_code: str,
+        refactoring_goals: str,
+        **kwargs
+    ) -> GenerationResult:
         """
         Refactor existing code based on specified goals.
         
         Args:
             original_code: Source code to refactor
             refactoring_goals: Description of desired improvements
+            **kwargs: Additional arguments for refactoring
             
         Returns:
-            Dict containing refactored code and explanation
+            GenerationResult containing refactored code and explanation
+            
+        Raises:
+            NotImplementedError: This is a stub for future implementation
         """
-        return refactor_code(
-            llm=self.llm,
-            original_code=original_code,
-            refactoring_goals=refactoring_goals
-        )
+        raise NotImplementedError("Code refactoring not yet implemented")
     
-    def generate_documentation(self, code: str, 
-                             doc_type: str = "api") -> Dict[str, Any]:
+    def generate_documentation(
+        self,
+        code: str,
+        doc_type: str = "api",
+        **kwargs
+    ) -> GenerationResult:
         """
         Generate documentation for given code.
         
         Args:
             code: Source code to document
             doc_type: Type of documentation ('api', 'inline', 'readme')
+            **kwargs: Additional arguments for documentation generation
             
         Returns:
-            Dict containing generated documentation and metadata
+            GenerationResult containing generated documentation and metadata
+            
+        Raises:
+            NotImplementedError: This is a stub for future implementation
         """
-        return generate_documentation(
-            llm=self.llm,
-            code=code,
-            doc_type=doc_type
-        )
+        raise NotImplementedError("Documentation generation not yet implemented")
