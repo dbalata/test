@@ -1,12 +1,12 @@
 # Advanced LangChain Document Q&A Web Application
 
-A comprehensive web-based LangChain application for document processing, retrieval-augmented generation (RAG), and intelligent question-answering with a modern web interface.
+A comprehensive web-based LangChain application for document processing, retrieval-augmented generation (RAG), and intelligent question-answering with a modern web interface. Powered by OpenRouter for LLM access.
 
 ## Features
 
 ### 🔧 Core Capabilities
 - **Multi-format Document Processing**: PDF, TXT, Markdown files, and web scraping
-- **Vector Storage**: ChromaDB with OpenAI embeddings for semantic search
+- **Vector Storage**: ChromaDB with embeddings for semantic search
 - **Retrieval-Augmented Generation (RAG)**: Contextual Q&A with source citations
 - **Conversation Memory**: Maintains context across multiple interactions
 - **Modern Web Interface**: Beautiful Streamlit-based UI
@@ -46,9 +46,23 @@ pip install -r requirements.txt
 Create a `.env` file in the project root with your API keys:
 
 ```
-OPENAI_API_KEY=your_openai_api_key_here
-SERPAPI_API_KEY=your_serpapi_key_here  # Optional, for enhanced web search
+# Required
+LLM_API_KEY=your_openrouter_api_key_here
+
+# Optional - override defaults if needed
+# LLM_BASE_URL=https://openrouter.ai/api/v1
+# LLM_PROVIDER=openrouter
+# LLM_MODEL=openai/gpt-4-turbo-preview
+
+# Optional - for enhanced web search
+# SERPAPI_API_KEY=your_serpapi_key_here
 ```
+
+### 3. Get an OpenRouter API Key
+
+1. Sign up at [OpenRouter](https://openrouter.ai/)
+2. Get your API key from the [keys page](https://openrouter.ai/keys)
+3. Add it to your `.env` file as `LLM_API_KEY`
 
 ### 3. Run the Web Application
 
@@ -90,6 +104,78 @@ The system automatically routes queries to appropriate agents:
 - Document analysis for content-based questions
 - Web search for current information needs
 - Code analysis for technical content
+
+## Running Tests
+
+The project includes a comprehensive test suite to ensure code quality and reliability. To run the tests:
+
+### Prerequisites
+
+- Python 3.9+
+- All dependencies from `requirements.txt`
+- Test dependencies (install with `pip install -e ".[test]"`)
+
+### Running All Tests
+
+```bash
+pytest
+```
+
+### Running Specific Test Files
+
+```bash
+# Run logger tests
+pytest tests/test_logger.py -v
+
+# Run exception handling tests
+pytest tests/test_exceptions.py tests/test_exceptions_simple.py tests/test_exception_contract.py tests/test_actual_exceptions.py -v
+
+# Run settings tests
+pytest tests/test_settings.py -v
+```
+
+### Running with Coverage
+
+To generate a coverage report:
+
+```bash
+pytest --cov=src --cov-report=term-missing
+```
+
+### Test Categories
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test component interactions
+- **Exception Tests**: Verify proper error handling
+
+### Writing New Tests
+
+When adding new features, please include corresponding tests. Follow these guidelines:
+
+1. Place test files in the `tests/` directory
+2. Name test files with `test_` prefix
+3. Use descriptive test function names starting with `test_`
+4. Include docstrings explaining what each test verifies
+
+### Mocking
+
+Use the `unittest.mock` library to mock external dependencies in tests. Common mocks include:
+
+- API clients
+- File I/O operations
+- External services
+
+Example:
+
+```python
+from unittest.mock import patch, MagicMock
+
+@patch('module.ClassName')
+def test_something(mock_class):
+    mock_instance = mock_class.return_value
+    mock_instance.method.return_value = "mocked response"
+    # Test code here
+
 
 ### Example Workflows
 
