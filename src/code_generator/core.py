@@ -12,6 +12,7 @@ from .models.generation import GenerationResult, CodeBlock, TemplateConfig
 from .parser import CodeParser, ParserError
 from .templates import Template, TemplateRegistry, register_template, default_registry
 from ..openrouter_utils import get_chat_openai
+from .models.generation import GenerationResult
 
 # Type alias for language model
 LanguageModel = Callable[[str], str]
@@ -255,10 +256,30 @@ class CodeGenerator:
             GenerationResult containing generated tests and metadata
             
         Raises:
-            NotImplementedError: This is a stub for future implementation
+            CodeGenerationError: If test generation fails
         """
-        raise NotImplementedError("Test generation not yet implemented")
-    
+        try:
+            prompt = self._build_testing_suite_prompt(code_to_test, testing_framework)
+            response = self.llm(prompt)
+            return self.parser.parse(response)
+        except Exception as e:
+            raise CodeGenerationError(f"Failed to generate testing suite: {str(e)}")
+
+    def _build_testing_suite_prompt(
+        self,
+        code_to_test: str,
+        testing_framework: str
+    ) -> str:
+        """Build the prompt for test generation."""
+        return (
+            f"Generate a test suite using {testing_framework} for the following code:\n\n"
+            f"```\n{code_to_test}\n```\n\n"
+            "Provide:\n"
+            "1. A brief explanation of the generated tests.\n"
+            "2. The test code in markdown code blocks.\n"
+            "3. Any necessary dependencies for running the tests."
+        )
+
     def refactor_code(
         self,
         original_code: str,

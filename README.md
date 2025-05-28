@@ -132,6 +132,9 @@ pytest tests/test_exceptions.py tests/test_exceptions_simple.py tests/test_excep
 
 # Run settings tests
 pytest tests/test_settings.py -v
+
+# Run code generator tests
+pytest tests/test_code_generator.py -v
 ```
 
 ### Running with Coverage
